@@ -58,24 +58,14 @@ export class OrgContextService {
       throw new ForbiddenException('User is not a member of this organization');
     }
 
-    // Prefer org-level role (departmentId null), otherwise any active role.
-    const roleAssignment =
-      (await this.prisma.membershipRole.findFirst({
-        where: {
-          membershipId: membership.id,
-          isActive: true,
-          departmentId: null,
-        },
-        orderBy: { assignedAt: 'desc' },
-        select: { role: true },
-      })) ??
-      (await this.prisma.membershipRole.findFirst({
-        where: { membershipId: membership.id, isActive: true },
-        orderBy: { assignedAt: 'desc' },
-        select: { role: true },
-      }));
-
-    const role = roleAssignment?.role ?? AccessRole.RECRUITER;
+    // Prefer org-level role (departmentId null), else first active role by assignedAt.
+    const roleAssignments = await this.prisma.membershipRole.findMany({
+      where: { membershipId: membership.id, isActive: true },
+      orderBy: { assignedAt: 'desc' },
+      select: { role: true, departmentId: true },
+    });
+    const orgLevel = roleAssignments.find((r) => r.departmentId === null);
+    const role = (orgLevel ?? roleAssignments[0])?.role ?? AccessRole.RECRUITER;
 
     const mappings = await this.prisma.rolePermissionMapping.findMany({
       where: { role },

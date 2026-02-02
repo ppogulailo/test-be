@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 const config = {
-  port: Number(process.env.PORT) || 3000,
+  port: Number(process.env.PORT) || 4000,
   corsOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000',
 };
 

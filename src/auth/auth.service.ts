@@ -91,7 +91,7 @@ export class AuthService {
 
   async refreshTokens(
     refreshToken: string | undefined,
-  ): Promise<{ accessToken: string } | null> {
+  ): Promise<{ accessToken: string }> {
     if (!refreshToken) {
       throw new ForbiddenException('Refresh token required');
     }
@@ -102,7 +102,7 @@ export class AuthService {
         { algorithms: ['HS256'] },
       );
       if (payload.type !== 'refresh') {
-        return null;
+        throw new ForbiddenException('Invalid or expired refresh token');
       }
 
       const user = await this.prisma.user.findUnique({
@@ -111,7 +111,7 @@ export class AuthService {
       });
 
       if (!user || !user.isActive) {
-        return null;
+        throw new ForbiddenException('Invalid or expired refresh token');
       }
 
       const accessToken = await this.jwt.signAsync(
@@ -123,8 +123,9 @@ export class AuthService {
       );
 
       return { accessToken };
-    } catch {
-      return null;
+    } catch (err) {
+      if (err instanceof ForbiddenException) throw err;
+      throw new ForbiddenException('Invalid or expired refresh token');
     }
   }
 
