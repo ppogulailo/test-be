@@ -25,6 +25,15 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Documentation
+
+Backend documentation lives in the **[docs/](./docs/)** folder:
+
+- **[docs/README.md](./docs/README.md)** — Overview and quick start
+- **[docs/setup.md](./docs/setup.md)** — Environment, database, migrations, seed
+- **[docs/architecture.md](./docs/architecture.md)** — App structure, auth flow, org context, RBAC
+- **[docs/api-reference.md](./docs/api-reference.md)** — HTTP endpoints, request/response, auth
+
 ## Project setup
 
 ```bash
