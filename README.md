@@ -101,7 +101,7 @@ You can demonstrate and verify RBAC **as much as possible from the browser** usi
 
 ### Milestone 0 – Authorization
 
-1. **Log in** – Open `http://localhost:3000/auth/log-in`, sign in with **user1@example.com** / **dev**. You should land on the client dashboard (session/JWT with userId).
+1. **Log in** – Open `http://localhost:3000/auth/log-in`, sign in with **user1@example.com** / **dev12345**. You should land on the client dashboard (session/JWT with userId).
 2. **Log out** – Click Logout in the sidebar; visiting `/client/dashboard` again should redirect to login (session cleared).
 3. **Server rejects unauthenticated** – In DevTools Console: `fetch('http://localhost:4000/orgs').then(r => console.log(r.status))` → expect **401** when not logged in.
 4. **User in 2 orgs resolved server-side** – Use the Backend RBAC test page (below); it calls GET /orgs and shows current org + 2 orgs for the seeded user.
@@ -109,7 +109,7 @@ You can demonstrate and verify RBAC **as much as possible from the browser** usi
 ### Milestone 1 – Organization Context + Permissions
 
 1. **Start app and log in** – Same as above (user1@example.com / dev).
-2. **Open Backend RBAC test page** – In the app: **Settings** → **Backend RBAC test (M0 & M1)**, or open **http://localhost:3000/client/backend-rbac-test**. The page calls the Nest backend GET /orgs using your backend session (cookie).
+2. **Open Backend RBAC test page** – In the app: **Settings** → **Backend RBAC test (M0 & M1)**, or open **http://localhost:3000/client/backend-rbac-test**. The page calls the Nest backend GET /orgs using your backend session (cookie). If testing backend-only, use curl with JWT from signin or dev-login (see “How to test Milestone 1” below).
 3. **Verify current org and list** – You should see **Current org ID** and a list of **2 orgs** (Org A, Org B). No “No backend session” = currentOrgId is loaded from session/membership table, not client input.
 4. **Switch org** – Click **Switch here** for the other org (e.g. Org B). The page refetches; **Current org ID** and the list should update (switching org changes currentOrgId).
 5. **Permissions differ per org** – With **Org A** (Admin): click **Call POST /jobs/publish** → expect **200**. Switch to **Org B** (Viewer), click again → expect **403** (permissions differ per org).

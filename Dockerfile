@@ -1,3 +1,5 @@
+#todo: Rewrite docker to prod version, currently just for dev purposes"
+
 FROM node:22.14.0-alpine
 WORKDIR /app
 
