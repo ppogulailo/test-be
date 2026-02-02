@@ -5,7 +5,6 @@ import {
   PrismaClient,
   AccessRole,
   UserType,
-  type AccessPermission,
 } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
@@ -61,8 +60,14 @@ async function getOrCreateCompany(tx: Prisma.TransactionClient, name: string) {
 
 async function main() {
   await prisma.$transaction(async (tx) => {
-    // 1) Canonical permissions
-    const permissions: AccessPermission[] = [];
+    // 1) Canonical permissions (type inferred from upsert return)
+    const permissions: Array<{
+      id: number;
+      name: string;
+      domain: string;
+      action: string;
+      description: string | null;
+    }> = [];
     for (const p of PERMISSIONS) {
       const { domain, action } = splitPermissionName(p.name);
       const created = await tx.accessPermission.upsert({
