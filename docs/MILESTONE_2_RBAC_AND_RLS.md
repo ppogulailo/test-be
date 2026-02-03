@@ -11,6 +11,7 @@
 - **Org scoping in queries:**
   - **Jobs:** All reads/writes in `JobsService` are scoped by `companyId` (current org). List, getOne, create, publish use `runWithOrgContext(companyId, ...)` and/or `where: { companyId }` and `assertOrgAccess` for single-resource checks.
   - **Applications (pipeline):** `ApplicationsService.list` is scoped by `companyId`; optional filter by `jobId`.
+  - **Candidates:** Recruiter-facing candidate data is only exposed via Applications (each application has `candidateProfileId`). There is no separate `/candidates` list endpoint; all candidate-related data is returned through org-scoped Application queries, so no query returns cross-org data.
   - No query returns cross-org data.
 
 - **Protected endpoints:**
@@ -88,5 +89,23 @@
 - **GET /jobs** – read, scoped by org, requires job:read.
 - **GET /jobs/:id** – read one, 403 if other org, requires job:read.
 - **POST /jobs** – write, scoped by org, requires job:create.
+- **POST /jobs/publish** – write (body `jobId`), 403 if other org or no job:publish.
 - **POST /jobs/:id/publish** – write, 403 if other org or no job:publish.
-- **GET /applications** – read, scoped by org, requires job:read.
+- **GET /applications** – read (pipeline), scoped by org, optional ?jobId=, requires job:read.
+
+---
+
+## Milestone 2 completion checklist (PR / handoff)
+
+| Deliverable | Status | Location / notes |
+|-------------|--------|------------------|
+| **RBAC helpers** | Done | `requirePermission` → `@RequirePermission` + `RequirePermissionGuard` (e.g. `job:publish`). `assertOrgAccess(entityOrgId, currentOrgId)` in `src/common/rbac/org-access.util.ts`. Server-side only. |
+| **Org scoping** | Done | Jobs: `JobsService` (list, getOne, create, publish). Applications: `ApplicationsService.list`. Candidates: via Applications only; no cross-org data. |
+| **Protected read endpoint** | Done | GET /jobs, GET /jobs/:id, GET /applications (job:read). |
+| **Protected write endpoint** | Done | POST /jobs (job:create), POST /jobs/:id/publish and POST /jobs/publish (job:publish). |
+| **Allowed / denied (403) demonstrated** | Done | Reproducible steps in this doc (Viewer 403 on POST /jobs; Admin 201). |
+| **Recruiter A cannot see B data** | Done | Org switch + GET /jobs returns only current org; RLS + runWithOrgContext enforce. |
+| **Recruiter without permission → 403** | Done | Viewer has job:read only; POST /jobs or POST /jobs/:id/publish → 403. |
+| **Admin succeeds on same action** | Done | Admin in Org A can GET /jobs, POST /jobs, POST /jobs/:id/publish. |
+| **Test cases / reproducible steps** | Done | Section "Reproducible steps (API)" in this doc + RLS script `scripts/verify-rls.ts`. |
+| **List of endpoints covered** | Done | Table above + `docs/api-reference.md` (Jobs + Applications). |

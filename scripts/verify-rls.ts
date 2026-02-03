@@ -8,6 +8,10 @@
  * Run from project root after migrations and seed:
  *   npx ts-node scripts/verify-rls.ts
  * Requires DATABASE_URL (use .env or export DATABASE_URL).
+ *
+ * If step 2 fails (org B still sees org A rows): your DB user is likely a superuser.
+ * Use the ferdge_app role (see docs/RLS_AND_DB_CONTEXT.md): set its password, then
+ * set DATABASE_URL=postgresql://ferdge_app:password@localhost:5432/deveteria?schema=public
  */
 
 import 'dotenv/config';
@@ -26,6 +30,25 @@ const prisma = new PrismaClient({
 
 async function main() {
   await prisma.$connect();
+
+  // Detect if current DB user bypasses RLS (superuser or BYPASSRLS) — if so, RLS will never apply
+  const rlsCheck = await prisma.$queryRawUnsafe<Array<{ current_user: string; bypasses_rls: boolean }>>(
+    `SELECT current_user::text AS current_user,
+            COALESCE((SELECT r.rolsuper OR r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user), false) AS bypasses_rls`,
+  );
+  const user = rlsCheck[0]?.current_user ?? 'unknown';
+  const bypasses = rlsCheck[0]?.bypasses_rls ?? true;
+  if (bypasses) {
+    console.error('\n*** RLS is not applied: your database user bypasses RLS. ***');
+    console.error('Current user:', user);
+    console.error('');
+    console.error('Use the ferdge_app role in DATABASE_URL (see docs/RLS_AND_DB_CONTEXT.md):');
+    console.error('  1. npx prisma migrate deploy   (if not done)');
+    console.error('  2. In .env set:');
+    console.error('     DATABASE_URL="postgresql://ferdge_app:ferdge_app_change_me@localhost:5432/deveteria?schema=public"');
+    console.error('  3. Run this script again.\n');
+    process.exit(1);
+  }
 
   // Get two orgs and a job in org 1 from seed
   const companies = await prisma.company.findMany({ take: 2, orderBy: { id: 'asc' } });

@@ -15,19 +15,36 @@ So “DB context” is set **per transaction**, not per HTTP request globally. E
 
 ## Which tables are protected
 
-| Table        | RLS enabled | Policy key column | Notes                          |
-|-------------|-------------|-------------------|--------------------------------|
-| **Job**     | Yes         | `companyId`       | SELECT/INSERT/UPDATE/DELETE    |
-| **Application** | Yes     | `companyId`       | SELECT/INSERT/UPDATE/DELETE    |
+| Table        | RLS enabled | FORCE RLS | Policy key column | Notes                          |
+|-------------|-------------|-----------|-------------------|--------------------------------|
+| **Job**     | Yes         | Yes       | `companyId`       | SELECT/INSERT/UPDATE/DELETE    |
+| **Application** | Yes     | Yes       | `companyId`       | SELECT/INSERT/UPDATE/DELETE    |
 
-Policies use:
+**FORCE ROW LEVEL SECURITY** makes the table owner subject to RLS. However, **PostgreSQL superusers always bypass RLS**; so does any role with the `BYPASSRLS` attribute. For RLS to actually apply, the app (and the verify script) must connect as a **non-superuser role with NOBYPASSRLS**.
 
-- **SELECT:** `USING ("companyId" = (current_setting('app.current_org_id', true))::integer)`
-- **INSERT:** `WITH CHECK ("companyId" = ...)`
-- **UPDATE:** `USING (...)` and `WITH CHECK (...)`
-- **DELETE:** `USING (...)`
+A migration creates the role **`ferdge_app`** (NOSUPERUSER, NOBYPASSRLS) and grants it access to all tables in `public`. To enforce RLS:
 
-If `app.current_org_id` is not set (e.g. a query runs outside `runWithOrgContext`), `current_setting(..., true)` returns `NULL` and the comparison fails, so **no rows** are returned or modified.
+**Two-role workflow:** Run **migrations** only as the **table owner** (e.g. `appuser`); only the owner can create/alter RLS policies. Use **`ferdge_app`** in `DATABASE_URL` for the **application** and the **verify script**.
+
+1. **Migrations:** In `.env` set `DATABASE_URL` to the table owner (e.g. `appuser`). Run `npx prisma migrate deploy`.  
+2. **App and verify:** Switch `.env` to `ferdge_app`: `DATABASE_URL="postgresql://ferdge_app:ferdge_app_change_me@localhost:5432/deveteria?schema=public"`. Then run the app and `npx ts-node scripts/verify-rls.ts`.
+3. **Production:** change `ferdge_app` password (as `appuser`: `ALTER ROLE ferdge_app PASSWORD '...';`) and update `DATABASE_URL`.
+
+### Recovery from "must be owner of relation Job" (P3018 / 42501)
+
+If a migration failed with **must be owner of relation Job**, migrations were run as `ferdge_app`. Fix it:
+
+1. In `.env`, set `DATABASE_URL` to the **table owner** (e.g. `appuser`).
+2. Mark the failed migration as rolled back: `npx prisma migrate resolve --rolled-back 20260203120004_rls_handle_unset_org_id`
+3. Apply again: `npx prisma migrate deploy`
+4. Switch `.env` back to `ferdge_app` for the app and verify script.
+
+Policies use `NULLIF(current_setting('app.current_org_id', true), '')::integer` so that when the setting is unset (empty string), the expression becomes NULL and no rows match:
+
+- **SELECT:** `USING ("companyId" = (NULLIF(current_setting('app.current_org_id', true), '')::integer))`
+- **INSERT / UPDATE / DELETE:** same expression in `WITH CHECK` / `USING` as needed.
+
+If `app.current_org_id` is not set, the expression is NULL and **no rows** are returned or modified.
 
 ## Verification
 
@@ -36,12 +53,14 @@ If `app.current_org_id` is not set (e.g. a query runs outside `runWithOrgContext
   - Sets context to org B and runs `findMany` without `where` → no rows from org A (proves cross-org leak is blocked).
   - Runs `findMany` in a transaction **without** `set_config` → 0 rows (proves missing context does not leak data).
 
-Run after migrations and seed (from **project root**, with `.env` containing `DATABASE_URL`):
+Run after migrations and seed. Use the **table owner** in `DATABASE_URL` for migrate and seed; then switch to **`ferdge_app`** for the verify script (from **project root**):
 
 ```bash
 npx prisma generate
+# DATABASE_URL = table owner (e.g. appuser):
 npx prisma migrate deploy
 npm run db:seed
+# Switch DATABASE_URL to ferdge_app, then:
 npx ts-node scripts/verify-rls.ts
 ```
 

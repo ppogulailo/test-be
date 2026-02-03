@@ -299,6 +299,34 @@ Same as POST /jobs/publish but job id in path. **Permission:** `job:publish`
 
 ---
 
+## Applications (pipeline)
+
+Base path: `/applications`
+
+All application endpoints require JWT, org context, and the specified permission(s). Queries are scoped by current org; no cross-org data is returned.
+
+---
+
+### GET /applications
+
+List applications for the current org (pipeline). Optional filter by job.
+
+**Auth:** Required (JWT + org context). **Permission:** `job:read`
+
+**Query:**
+
+| Param  | Type   | Description        |
+|--------|--------|--------------------|
+| jobId  | number | Optional. Filter by job id. |
+
+**Response:** `200`
+
+Array of applications (id, jobId, candidateProfileId, companyId, status, submittedAt, updatedAt). Only applications for the current org are returned.
+
+**Errors:** `401` not authenticated; `403` no org context or missing `job:read`.
+
+---
+
 ## Error responses
 
 - **400 Bad Request:** Validation failed (e.g. invalid email, short password). Body may include validation details.

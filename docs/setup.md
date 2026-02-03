@@ -60,7 +60,7 @@ npx prisma migrate deploy
 npm run db:seed
 ```
 
-Seed is configured in `prisma.config.ts` (`migrations.seed`) and is idempotent; safe to run multiple times.
+`npm run db:seed` runs `ts-node prisma/seed.ts` directly. Seed is idempotent; safe to run multiple times.
 
 **Seeded data:**
 
