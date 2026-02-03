@@ -33,6 +33,8 @@ Backend documentation lives in the **[docs/](./docs/)** folder:
 - **[docs/setup.md](./docs/setup.md)** — Environment, database, migrations, seed
 - **[docs/architecture.md](./docs/architecture.md)** — App structure, auth flow, org context, RBAC
 - **[docs/api-reference.md](./docs/api-reference.md)** — HTTP endpoints, request/response, auth
+- **[docs/MILESTONE_2_RBAC_AND_RLS.md](./docs/MILESTONE_2_RBAC_AND_RLS.md)** — Milestone 2 & 2B: RBAC enforcement, org-scoped queries, RLS
+- **[docs/RLS_AND_DB_CONTEXT.md](./docs/RLS_AND_DB_CONTEXT.md)** — How RLS context is set, which tables are protected
 
 ## Project setup
 
@@ -187,9 +189,17 @@ Expected:
 - user is **viewer** in **Org B**
 
 ```bash
-# should be 200 in Org A (admin has job:publish)
+# Create a job first, then publish it (admin has job:publish)
+curl -s -X POST "http://localhost:4000/jobs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Test","experience":"MID","employmentType":"LONG_TERM","workArrangement":"REMOTE","responsibilities":[],"requirements":[],"niceToHave":[],"perks":[],"whoYouAre":[],"tags":[]}'
+# Note the returned job id (e.g. 1), then:
 curl -i -X POST "http://localhost:4000/jobs/publish" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":1}'
+# Expect 200 in Org A.
 ```
 
 Now switch to Org B (grab Org B id from `/orgs` response):
@@ -200,9 +210,12 @@ curl -s -X POST "http://localhost:4000/orgs/<ORG_B_ID>/switch" \
 ```
 
 ```bash
-# should be 403 in Org B (viewer does NOT have job:publish)
+# 403 in Org B (viewer does NOT have job:publish)
 curl -i -X POST "http://localhost:4000/jobs/publish" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":1}'
+# Expect 403.
 ```
 
 ## Compile and run the project

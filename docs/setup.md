@@ -18,7 +18,10 @@ Copy the example env and set values:
 
 ```bash
 cp env.example .env
+# Edit .env and set DATABASE_URL and JWT_SECRET
 ```
+
+**Prisma 7:** The Prisma config (`prisma.config.ts`) loads `DATABASE_URL` via `env('DATABASE_URL')`. Ensure `.env` exists and contains `DATABASE_URL` when you run `prisma migrate deploy` or `prisma db seed`; otherwise those commands will fail.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -48,13 +51,16 @@ npx prisma migrate reset
 
 ### Seed
 
-Seed creates canonical permissions, role–permission mappings, two demo orgs (Org A, Org B), and a demo user in both orgs:
+Seed creates canonical permissions, role–permission mappings, two demo orgs (Org A, Org B), and a demo user in both orgs. **Requires `DATABASE_URL` in `.env`** (and migrations applied):
 
 ```bash
+# From project root, with .env containing DATABASE_URL
+npx prisma generate
+npx prisma migrate deploy
 npm run db:seed
 ```
 
-Seed is idempotent; safe to run multiple times.
+Seed is configured in `prisma.config.ts` (`migrations.seed`) and is idempotent; safe to run multiple times.
 
 **Seeded data:**
 

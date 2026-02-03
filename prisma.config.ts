@@ -5,6 +5,6 @@ export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: { path: 'prisma/migrations' },
   datasource: {
-    url: process.env.DATABASE_URL!, // docker run -e DATABASE_URL=...
+    url: "postgresql://appuser:strong_password_here@localhost:5432/deveteria?schema=public", // docker run -e DATABASE_URL=...
   },
 });

@@ -33,7 +33,7 @@ src/
 │   ├── organizations.service.ts     # listForUser, switchOrg
 │   └── organizations.module.ts
 ├── jobs/
-│   ├── jobs.controller.ts     # POST /jobs (job:create), POST /jobs/publish (job:publish)
+│   ├── jobs.controller.ts     # GET/POST /jobs, POST /jobs/publish, POST /jobs/:id/publish (job:read, job:create, job:publish)
 │   └── jobs.module.ts
 ├── rbac/
 │   ├── require-permission.decorator.ts  # @RequirePermission('permission:action')
@@ -80,7 +80,7 @@ For routes that need “current org” and permissions (e.g. `/orgs`, `/jobs/*`)
 
 - **Model:** Permissions are stored in `AccessPermission` (e.g. `job:create`, `job:publish`). `RolePermissionMapping` links `AccessRole` (e.g. ORG_ADMIN, RECRUITER, VIEWER) to permissions. A user’s permissions in a request are the permissions of their **current-org role** (from `MembershipRole` + `RolePermissionMapping`).
 - **Usage:** Controllers that need a specific permission use `@RequirePermission('permission:action')` and `RequirePermissionGuard`. The guard runs after `OrgContextGuard` and checks that `req.authContext.permissions` includes every required permission. If not, it returns **403 Forbidden**.
-- **Example:** `POST /jobs/publish` requires `job:publish`. User in Org A (ORG_ADMIN) has it → 200. Same user in Org B (VIEWER) does not → 403.
+- **Example:** `POST /jobs/publish` (body: `{ "jobId": 1 }`) requires `job:publish`. User in Org A (ORG_ADMIN) has it → 200. Same user in Org B (VIEWER) does not → 403.
 
 ---
 
