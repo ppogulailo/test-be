@@ -1,5 +1,4 @@
--- Force RLS so that table owner and superusers are also subject to policies.
--- Without this, the role that owns the table (or a superuser) bypasses RLS and the verification fails.
+-- FORCE ROW LEVEL SECURITY so the table owner is also subject to RLS (no bypass by owner).
 
 ALTER TABLE "Job" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Application" FORCE ROW LEVEL SECURITY;

@@ -2,19 +2,27 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { JobStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertOrgAccess } from '../common/rbac/org-access.util';
+import { canAccessJob, isOrgWideScope, jobWhereForScope } from '../common/rbac/scope.util';
 import type { CreateJobDto } from './dto/create-job.dto';
+
+export type JobScopeContext = {
+  companyId: number;
+  userId: number;
+  roleKey: string;
+};
 
 @Injectable()
 export class JobsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * List jobs for the current org only. All queries scoped by companyId.
+   * List jobs. Admin/HM/Viewer/Reviewer: org-wide. Recruiter: own or assigned only.
    */
-  async list(companyId: number) {
-    return this.prisma.runWithOrgContext(companyId, (tx) =>
+  async list(ctx: JobScopeContext) {
+    const where = jobWhereForScope(ctx.companyId, ctx.userId, ctx.roleKey);
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.findMany({
-        where: { companyId },
+        where,
         select: {
           id: true,
           title: true,
@@ -29,10 +37,10 @@ export class JobsService {
   }
 
   /**
-   * Get one job by id. Throws if not in current org. Uses RLS so wrong org gets no row.
+   * Get one job by id. Recruiter: only if own or assigned; Admin/HM/Viewer/Reviewer: any job in org.
    */
-  async getOne(jobId: number, companyId: number) {
-    const job = await this.prisma.runWithOrgContext(companyId, (tx) =>
+  async getOne(jobId: number, ctx: JobScopeContext) {
+    const job = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.findFirst({
         where: { id: jobId },
         select: {
@@ -40,6 +48,7 @@ export class JobsService {
           title: true,
           status: true,
           companyId: true,
+          recruiterId: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -48,15 +57,30 @@ export class JobsService {
     if (!job) {
       throw new NotFoundException('Job not found');
     }
-    assertOrgAccess(job.companyId, companyId);
-    return job;
+    assertOrgAccess(job.companyId, ctx.companyId);
+
+    if (!isOrgWideScope(ctx.roleKey)) {
+      const hasAssignment = await this.prisma.jobAssignment.findFirst({
+        where: {
+          jobId,
+          recruiterId: ctx.userId,
+          isActive: true,
+        },
+      });
+      if (!canAccessJob(job, ctx.companyId, ctx.userId, ctx.roleKey, !!hasAssignment)) {
+        throw new ForbiddenException('Access denied: you do not own or are not assigned to this job');
+      }
+    }
+    const { recruiterId: _, ...rest } = job;
+    return rest;
   }
 
   /**
-   * Create a job in the current org. Scoped by companyId.
+   * Create a job in the current org. Recruiter becomes owner (recruiterId).
    */
-  async create(companyId: number, dto: CreateJobDto) {
-    return this.prisma.runWithOrgContext(companyId, (tx) =>
+  async create(ctx: JobScopeContext, dto: CreateJobDto) {
+    const recruiterId = isOrgWideScope(ctx.roleKey) ? null : ctx.userId;
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.create({
         data: {
           title: dto.title,
@@ -71,7 +95,8 @@ export class JobsService {
           education: dto.education ?? null,
           location: dto.location ?? null,
           tags: dto.tags,
-          companyId,
+          companyId: ctx.companyId,
+          recruiterId,
           status: JobStatus.DRAFT,
         },
         select: {
@@ -86,19 +111,32 @@ export class JobsService {
   }
 
   /**
-   * Publish a job (set status to LIVE). Fails if job is not in current org.
+   * Publish a job. Recruiter: only if own or assigned; Admin/HM: any job in org.
    */
-  async publish(jobId: number, companyId: number) {
+  async publish(jobId: number, ctx: JobScopeContext) {
     const job = await this.prisma.job.findFirst({
       where: { id: jobId },
-      select: { id: true, companyId: true },
+      select: { id: true, companyId: true, recruiterId: true },
     });
     if (!job) {
       throw new NotFoundException('Job not found');
     }
-    assertOrgAccess(job.companyId, companyId);
+    assertOrgAccess(job.companyId, ctx.companyId);
 
-    return this.prisma.runWithOrgContext(companyId, (tx) =>
+    if (!isOrgWideScope(ctx.roleKey)) {
+      const hasAssignment = await this.prisma.jobAssignment.findFirst({
+        where: {
+          jobId,
+          recruiterId: ctx.userId,
+          isActive: true,
+        },
+      });
+      if (!canAccessJob(job, ctx.companyId, ctx.userId, ctx.roleKey, !!hasAssignment)) {
+        throw new ForbiddenException('Access denied: you do not own or are not assigned to this job');
+      }
+    }
+
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.update({
         where: { id: jobId },
         data: { status: JobStatus.LIVE },
