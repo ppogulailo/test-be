@@ -7,6 +7,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { UserType } from '@prisma/client';
 import { AuthService } from './auth.service';
@@ -27,11 +28,16 @@ type RequestWithCookies = RequestWithAuth & {
   cookies?: Record<string, string | undefined>;
 };
 
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('signup')
+  @ApiOperation({ summary: 'Register a new user' })
+  @ApiResponse({ status: 201, description: 'Created. Returns JWT and user id; sets cookies.' })
+  @ApiResponse({ status: 400, description: 'Validation failed' })
+  @ApiResponse({ status: 409, description: 'Email already exists' })
   async signup(
     @Body() dto: SignUpDto,
     @Res({ passthrough: true }) res: Response,
@@ -44,6 +50,9 @@ export class AuthController {
   }
 
   @Post('signin')
+  @ApiOperation({ summary: 'Sign in with email and password' })
+  @ApiResponse({ status: 201, description: 'Success. Returns JWT and id; sets access_token and refresh_token cookies.' })
+  @ApiResponse({ status: 400, description: 'Invalid email or password' })
   async signin(
     @Body() dto: AuthDto,
     @Res({ passthrough: true }) res: Response,
@@ -57,6 +66,9 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
+  @ApiOperation({ summary: 'Get current user' })
+  @ApiResponse({ status: 200, description: 'Current user id, email, role (client | candidate)' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
   async me(@CurrentUser() user: RequestUser) {
     const me = await this.auth.getMe(user.userId);
     const role = me.type === UserType.CANDIDATE ? 'candidate' : 'client';
@@ -65,6 +77,9 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('logout')
+  @ApiOperation({ summary: 'Log out and clear auth cookies' })
+  @ApiResponse({ status: 200, description: 'Cookies cleared' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
   async logout(
     @CurrentUser() user: RequestUser,
     @Res({ passthrough: true }) res: Response,
@@ -75,6 +90,9 @@ export class AuthController {
   }
 
   @Get('refresh')
+  @ApiOperation({ summary: 'Refresh access token using refresh_token cookie' })
+  @ApiResponse({ status: 200, description: 'New JWT returned; access_token cookie updated' })
+  @ApiResponse({ status: 403, description: 'Refresh token missing or invalid' })
   async refresh(
     @Req() req: RequestWithCookies,
     @Res({ passthrough: true }) res: Response,

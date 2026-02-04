@@ -10,7 +10,7 @@
  * Requires DATABASE_URL (use .env or export DATABASE_URL).
  *
  * If step 2 fails (org B still sees org A rows): your DB user is likely a superuser.
- * Use the ferdge_app role (see docs/RLS_AND_DB_CONTEXT.md): set its password, then
+ * Use the ferdge_app role: set its password, then
  * set DATABASE_URL=postgresql://ferdge_app:password@localhost:5432/deveteria?schema=public
  */
 
@@ -42,7 +42,7 @@ async function main() {
     console.error('\n*** RLS is not applied: your database user bypasses RLS. ***');
     console.error('Current user:', user);
     console.error('');
-    console.error('Use the ferdge_app role in DATABASE_URL (see docs/RLS_AND_DB_CONTEXT.md):');
+    console.error('Use the ferdge_app role in DATABASE_URL:');
     console.error('  1. npx prisma migrate deploy   (if not done)');
     console.error('  2. In .env set:');
     console.error('     DATABASE_URL="postgresql://ferdge_app:ferdge_app_change_me@localhost:5432/deveteria?schema=public"');

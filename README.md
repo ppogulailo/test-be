@@ -33,9 +33,7 @@ Backend documentation lives in the **[docs/](./docs/)** folder:
 - **[docs/setup.md](./docs/setup.md)** — Environment, database, migrations, seed
 - **[docs/architecture.md](./docs/architecture.md)** — App structure, auth flow, org context, RBAC
 - **[docs/api-reference.md](./docs/api-reference.md)** — HTTP endpoints, request/response, auth
-- **[docs/MILESTONE_2_RBAC_AND_RLS.md](./docs/MILESTONE_2_RBAC_AND_RLS.md)** — Milestone 2 & 2B: RBAC enforcement, org-scoped queries, RLS
-- **[docs/RLS_AND_DB_CONTEXT.md](./docs/RLS_AND_DB_CONTEXT.md)** — How RLS context is set, which tables are protected
-
+- **Swagger UI** — When the app is running, open **http://localhost:4000/api** for interactive API docs (try endpoints, send JWT via Authorize).
 ## Project setup
 
 ```bash
