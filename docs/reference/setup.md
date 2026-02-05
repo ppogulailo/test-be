@@ -66,9 +66,9 @@ npm run db:seed
 
 - **Permissions:** e.g. `job:create`, `job:read`, `job:update`, `job:delete`, `job:publish`
 - **Role–permission mappings:** ORG_ADMIN → all job:*; RECRUITER → create/read/update/publish; VIEWER → job:read
-- **Companies:** “Org A”, “Org B”
+- **Companies:** "Org A", "Org B"
 - **User:** `user1@example.com` / `dev12345`, in Org A (ORG_ADMIN) and Org B (VIEWER)
-- **UserCurrentOrg:** demo user’s current org set to Org A
+- **UserCurrentOrg:** demo user's current org set to Org A
 
 ---
 
@@ -99,4 +99,4 @@ Project includes `Dockerfile` and `docker-compose.yml`. Use them to run Postgres
 2. **Auth:** `POST /auth/signin` with `{"email":"user1@example.com","password":"dev12345"}` → 201 with `jwt` and cookies.
 3. **Orgs:** `GET /orgs` with `Authorization: Bearer <jwt>` → `currentOrgId` and list of orgs (e.g. Org A, Org B).
 
-See [API Reference](./api-reference.md) and [Architecture](./architecture.md) for details.
+See [API Reference](./api-reference.md) and [Architecture](../architecture/architecture.md) for details.

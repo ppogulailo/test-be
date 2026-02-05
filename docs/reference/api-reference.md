@@ -149,7 +149,7 @@ Issue a new access token using the refresh token cookie. Sets new `access_token`
 
 Base path: `/orgs`
 
-All org endpoints require JWT and org context. Current org and list are resolved server-side from the user’s memberships and `UserCurrentOrg`; **no client-sent org id is trusted** for “current org”.
+All org endpoints require JWT and org context. Current org and list are resolved server-side from the user's memberships and `UserCurrentOrg`; **no client-sent org id is trusted** for "current org".
 
 ---
 

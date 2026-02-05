@@ -51,7 +51,7 @@ npx ts-node scripts/verify-rls.ts
 ```
 
 It checks:
-1. With context set to Org A: `findMany` with **no** `where` returns only Org A’s jobs.
+1. With context set to Org A: `findMany` with **no** `where` returns only Org A's jobs.
 2. With context set to Org B: `findMany` with **no** `where` returns no rows from Org A.
 3. With **no** context (plain transaction, no `set_config`): `findMany` returns 0 rows.
 

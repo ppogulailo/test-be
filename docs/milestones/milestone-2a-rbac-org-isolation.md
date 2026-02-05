@@ -35,7 +35,7 @@ Tests: `src/common/rbac/scope.util.spec.ts`, `src/rbac/role-permission-matrix.sp
 | POST | /jobs/:id/publish | job:publish | Same |
 | GET | /applications | job:read | By role (Recruiter: jobs own/assigned; others: org-wide). Optional ?jobId= |
 
-All require JWT + org context. List of endpoints also in Swagger (http://localhost:4000/api) and `docs/api-reference.md`.
+All require JWT + org context. List of endpoints also in Swagger (http://localhost:4000/api) and `docs/reference/api-reference.md`.
 
 ## How to verify
 
