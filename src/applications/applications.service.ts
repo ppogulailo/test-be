@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { isOrgWideScope, jobWhereForScope } from '../common/rbac/scope.util';
+import { applicationListSelect } from './applications.select';
 
 export type ApplicationScopeContext = {
   companyId: number;
@@ -8,9 +9,6 @@ export type ApplicationScopeContext = {
   roleKey: string;
 };
 
-/**
- * Applications (pipeline). Admin/HM/Viewer/Reviewer: org-wide. Recruiter: only for jobs they own or are assigned to.
- */
 @Injectable()
 export class ApplicationsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -23,15 +21,7 @@ export class ApplicationsService {
             companyId: ctx.companyId,
             ...(jobId !== undefined ? { jobId } : {}),
           },
-          select: {
-            id: true,
-            jobId: true,
-            candidateProfileId: true,
-            companyId: true,
-            status: true,
-            submittedAt: true,
-            updatedAt: true,
-          },
+          select: applicationListSelect,
           orderBy: { updatedAt: 'desc' },
         }),
       );
@@ -53,15 +43,7 @@ export class ApplicationsService {
           jobId: { in: ids },
           ...(jobId !== undefined ? { jobId } : {}),
         },
-        select: {
-          id: true,
-          jobId: true,
-          candidateProfileId: true,
-          companyId: true,
-          status: true,
-          submittedAt: true,
-          updatedAt: true,
-        },
+        select: applicationListSelect,
         orderBy: { updatedAt: 'desc' },
       }),
     );

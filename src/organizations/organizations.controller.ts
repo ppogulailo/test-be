@@ -6,7 +6,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OrgContextGuard } from '../common/context/org-context.guard';
 import { AuthCtx } from '../common/context/auth-context.decorators';
@@ -22,7 +27,10 @@ export class OrganizationsController {
 
   @Get()
   @ApiOperation({ summary: 'List organizations the user belongs to' })
-  @ApiResponse({ status: 200, description: 'Current org id and list of orgs with role' })
+  @ApiResponse({
+    status: 200,
+    description: 'Current org id and list of orgs with role',
+  })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   @ApiResponse({ status: 403, description: 'No active membership' })
   async list(@AuthCtx() ctx: AuthContext) {
@@ -37,7 +45,10 @@ export class OrganizationsController {
 
   @Post(':orgId/switch')
   @ApiOperation({ summary: 'Switch current organization' })
-  @ApiResponse({ status: 200, description: 'New auth context (currentOrgId, roleKey, permissions)' })
+  @ApiResponse({
+    status: 200,
+    description: 'New auth context (currentOrgId, roleKey, permissions)',
+  })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   @ApiResponse({ status: 403, description: 'Not a member of the org' })
   @ApiResponse({ status: 404, description: 'Org not found for user' })

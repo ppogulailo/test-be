@@ -1,5 +1,17 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthCtx } from '../common/context/auth-context.decorators';
 import { OrgContextGuard } from '../common/context/org-context.guard';
@@ -16,21 +28,32 @@ export class ApplicationsController {
 
   @Get()
   @RequirePermission('job:read')
-  @ApiOperation({ summary: 'List applications (Admin/HM/Viewer: org-wide; Recruiter: jobs own/assigned)' })
-  @ApiQuery({ name: 'jobId', required: false, type: Number, description: 'Filter by job id' })
+  @ApiOperation({
+    summary:
+      'List applications (Admin/HM/Viewer: org-wide; Recruiter: jobs own/assigned)',
+  })
+  @ApiQuery({
+    name: 'jobId',
+    required: false,
+    type: Number,
+    description: 'Filter by job id',
+  })
   @ApiResponse({ status: 200, description: 'List of applications' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'No org context or missing job:read' })
+  @ApiResponse({
+    status: 403,
+    description: 'No org context or missing job:read',
+  })
   list(
     @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
-    @Query('jobId') jobId?: string,
+    @Query('jobId', new ParseIntPipe({ optional: true })) jobId?: number,
   ) {
     const ctx = {
-      companyId: parseInt(auth.currentOrgId, 10),
-      userId: parseInt(auth.userId, 10),
+      companyId: Number(auth.currentOrgId),
+      userId: Number(auth.userId),
       roleKey: auth.roleKey,
     };
-    const jobIdNum = jobId ? parseInt(jobId, 10) : undefined;
-    return this.applications.list(ctx, jobIdNum);
+
+    return this.applications.list(ctx, jobId);
   }
 }

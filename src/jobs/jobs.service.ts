@@ -1,9 +1,22 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { JobStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertOrgAccess } from '../common/rbac/org-access.util';
-import { canAccessJob, isOrgWideScope, jobWhereForScope } from '../common/rbac/scope.util';
+import {
+  canAccessJob,
+  isOrgWideScope,
+  jobWhereForScope,
+} from '../common/rbac/scope.util';
 import type { CreateJobDto } from './dto/create-job.dto';
+import {
+  jobGetOneSelect,
+  jobListSelect,
+  jobPublishReadSelect,
+} from './jobs.select';
 
 export type JobScopeContext = {
   companyId: number;
@@ -23,14 +36,7 @@ export class JobsService {
     return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.findMany({
         where,
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          companyId: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+        select: jobListSelect,
         orderBy: { updatedAt: 'desc' },
       }),
     );
@@ -43,15 +49,7 @@ export class JobsService {
     const job = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.findFirst({
         where: { id: jobId },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          companyId: true,
-          recruiterId: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+        select: jobGetOneSelect,
       }),
     );
     if (!job) {
@@ -67,10 +65,21 @@ export class JobsService {
           isActive: true,
         },
       });
-      if (!canAccessJob(job, ctx.companyId, ctx.userId, ctx.roleKey, !!hasAssignment)) {
-        throw new ForbiddenException('Access denied: you do not own or are not assigned to this job');
+      if (
+        !canAccessJob(
+          job,
+          ctx.companyId,
+          ctx.userId,
+          ctx.roleKey,
+          !!hasAssignment,
+        )
+      ) {
+        throw new ForbiddenException(
+          'Access denied: you do not own or are not assigned to this job',
+        );
       }
     }
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { recruiterId: _, ...rest } = job;
     return rest;
   }
@@ -99,13 +108,7 @@ export class JobsService {
           recruiterId,
           status: JobStatus.DRAFT,
         },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          companyId: true,
-          createdAt: true,
-        },
+        select: jobListSelect,
       }),
     );
   }
@@ -116,7 +119,7 @@ export class JobsService {
   async publish(jobId: number, ctx: JobScopeContext) {
     const job = await this.prisma.job.findFirst({
       where: { id: jobId },
-      select: { id: true, companyId: true, recruiterId: true },
+      select: jobPublishReadSelect,
     });
     if (!job) {
       throw new NotFoundException('Job not found');
@@ -131,8 +134,18 @@ export class JobsService {
           isActive: true,
         },
       });
-      if (!canAccessJob(job, ctx.companyId, ctx.userId, ctx.roleKey, !!hasAssignment)) {
-        throw new ForbiddenException('Access denied: you do not own or are not assigned to this job');
+      if (
+        !canAccessJob(
+          job,
+          ctx.companyId,
+          ctx.userId,
+          ctx.roleKey,
+          !!hasAssignment,
+        )
+      ) {
+        throw new ForbiddenException(
+          'Access denied: you do not own or are not assigned to this job',
+        );
       }
     }
 
@@ -140,13 +153,7 @@ export class JobsService {
       tx.job.update({
         where: { id: jobId },
         data: { status: JobStatus.LIVE },
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          companyId: true,
-          updatedAt: true,
-        },
+        select: jobListSelect,
       }),
     );
   }

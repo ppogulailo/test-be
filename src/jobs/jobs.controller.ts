@@ -7,7 +7,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthCtx } from '../common/context/auth-context.decorators';
 import { OrgContextGuard } from '../common/context/org-context.guard';
@@ -23,7 +29,11 @@ import { CreateJobDto } from './dto/create-job.dto';
 export class JobsController {
   constructor(private readonly jobs: JobsService) {}
 
-  private toScopeContext(auth: { currentOrgId: string; userId: string; roleKey: string }) {
+  private toScopeContext(auth: {
+    currentOrgId: string;
+    userId: string;
+    roleKey: string;
+  }) {
     return {
       companyId: parseInt(auth.currentOrgId, 10),
       userId: parseInt(auth.userId, 10),
@@ -33,11 +43,19 @@ export class JobsController {
 
   @Get()
   @RequirePermission('job:read')
-  @ApiOperation({ summary: 'List jobs (Admin/HM/Viewer: org-wide; Recruiter: own or assigned)' })
+  @ApiOperation({
+    summary:
+      'List jobs (Admin/HM/Viewer: org-wide; Recruiter: own or assigned)',
+  })
   @ApiResponse({ status: 200, description: 'List of jobs' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'No org context or missing job:read' })
-  list(@AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string }) {
+  @ApiResponse({
+    status: 403,
+    description: 'No org context or missing job:read',
+  })
+  list(
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
+  ) {
     return this.jobs.list(this.toScopeContext(auth));
   }
 
@@ -46,7 +64,10 @@ export class JobsController {
   @ApiOperation({ summary: 'Get one job (Recruiter: only if own or assigned)' })
   @ApiResponse({ status: 200, description: 'Job details' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'Job in other org or Recruiter not own/assigned' })
+  @ApiResponse({
+    status: 403,
+    description: 'Job in other org or Recruiter not own/assigned',
+  })
   @ApiResponse({ status: 404, description: 'Job not found' })
   getOne(
     @Param('id', ParseIntPipe) id: number,
@@ -57,11 +78,16 @@ export class JobsController {
 
   @Post()
   @RequirePermission('job:create')
-  @ApiOperation({ summary: 'Create job in current org (Recruiter becomes owner)' })
+  @ApiOperation({
+    summary: 'Create job in current org (Recruiter becomes owner)',
+  })
   @ApiResponse({ status: 201, description: 'Created job' })
   @ApiResponse({ status: 400, description: 'Validation failed' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'No org context or missing job:create' })
+  @ApiResponse({
+    status: 403,
+    description: 'No org context or missing job:create',
+  })
   create(
     @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
     @Body() dto: CreateJobDto,
@@ -72,10 +98,20 @@ export class JobsController {
   @Post('publish')
   @RequirePermission('job:publish')
   @ApiOperation({ summary: 'Publish job (Recruiter: only if own or assigned)' })
-  @ApiBody({ schema: { type: 'object', required: ['jobId'], properties: { jobId: { type: 'number' } } } })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['jobId'],
+      properties: { jobId: { type: 'number' } },
+    },
+  })
   @ApiResponse({ status: 200, description: 'Job published' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'No org context, missing job:publish, or Recruiter not own/assigned' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'No org context, missing job:publish, or Recruiter not own/assigned',
+  })
   @ApiResponse({ status: 404, description: 'Job not found' })
   publishByBody(
     @Body('jobId', ParseIntPipe) jobId: number,
@@ -86,10 +122,16 @@ export class JobsController {
 
   @Post(':id/publish')
   @RequirePermission('job:publish')
-  @ApiOperation({ summary: 'Publish job by path (Recruiter: only if own or assigned)' })
+  @ApiOperation({
+    summary: 'Publish job by path (Recruiter: only if own or assigned)',
+  })
   @ApiResponse({ status: 200, description: 'Job published' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'No org context, missing job:publish, or Recruiter not own/assigned' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'No org context, missing job:publish, or Recruiter not own/assigned',
+  })
   @ApiResponse({ status: 404, description: 'Job not found' })
   publishById(
     @Param('id', ParseIntPipe) id: number,
