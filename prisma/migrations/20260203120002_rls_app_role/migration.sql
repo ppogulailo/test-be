@@ -10,7 +10,8 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO ferdge_app;
-GRANT SELECT ON "Company" TO ferdge_app;
+-- Company model is mapped to `companies` table (see schema @@map("companies"))
+GRANT SELECT ON companies TO ferdge_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "Job" TO ferdge_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON "Application" TO ferdge_app;
 GRANT SELECT ON job_assignments TO ferdge_app;

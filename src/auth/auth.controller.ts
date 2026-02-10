@@ -45,6 +45,7 @@ export class AuthController {
     const tokens = await this.auth.signUp({
       email: dto.email,
       password: dto.password,
+      role: dto.role,
     });
     return this.setCookiesAndReturnTokens(res, tokens);
   }

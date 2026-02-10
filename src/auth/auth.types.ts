@@ -8,7 +8,7 @@ export type RequestUser = {
   email: string;
 };
 
-export type SignUpInput = { email: string; password: string };
+export type SignUpInput = { email: string; password: string; role: 'client' | 'candidate' };
 export type SignInInput = { email: string; password: string };
 export type AuthTokens = {
   accessToken: string;

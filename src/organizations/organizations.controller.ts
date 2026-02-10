@@ -58,4 +58,21 @@ export class OrganizationsController {
   ) {
     return this.orgs.switchOrg(Number(ctx.userId), ctx.email, orgId);
   }
+
+  @Get('current/member-permissions')
+  @ApiOperation({
+    summary: 'Get current member info and permission overrides',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Member details and permission overrides',
+  })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 404, description: 'Member not found' })
+  async getCurrentMemberPermissions(@AuthCtx() ctx: AuthContext) {
+    return this.orgs.getCurrentMemberPermissions(
+      Number(ctx.userId),
+      Number(ctx.currentOrgId),
+    );
+  }
 }

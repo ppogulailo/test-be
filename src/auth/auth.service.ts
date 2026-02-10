@@ -35,11 +35,14 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(input.password, SALT_ROUNDS);
 
+    // Map role to UserType: 'client' -> TEAM_MEMBER, 'candidate' -> CANDIDATE
+    const userType = input.role === 'client' ? UserType.TEAM_MEMBER : UserType.CANDIDATE;
+
     const user = await this.prisma.user.create({
       data: {
         email: input.email.toLowerCase(),
         password: passwordHash,
-        type: UserType.TEAM_MEMBER,
+        type: userType,
         isActive: true,
       },
       select: { id: true, email: true },
