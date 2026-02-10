@@ -31,6 +31,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { name: 'job:update' },
   { name: 'job:delete' },
   { name: 'job:publish' },
+  { name: 'candidate:read' },
+  { name: 'pipeline:move_stage' },
 ];
 
 const ROLE_PERMISSION_MATRIX: Record<AccessRole, string[]> = {
@@ -40,10 +42,13 @@ const ROLE_PERMISSION_MATRIX: Record<AccessRole, string[]> = {
     'job:read',
     'job:update',
     'job:publish',
+    'candidate:read',
+    'pipeline:move_stage',
   ],
-  [AccessRole.VIEWER]: ['job:read'],
-  [AccessRole.HM]: ['job:create', 'job:read', 'job:update', 'job:publish'],
-  [AccessRole.REVIEWER]: ['job:read'],
+  [AccessRole.VIEWER]: ['job:read', 'candidate:read'],
+  [AccessRole.HM]: ['job:read', 'candidate:read', 'pipeline:move_stage'],
+  // Reviewer access is token-based; org-level permissions are not granted by default.
+  [AccessRole.REVIEWER]: [],
 };
 
 function splitPermissionName(name: string): { domain: string; action: string } {
@@ -131,6 +136,40 @@ async function main() {
       },
     });
 
+    // Additional demo users for Milestone 2 acceptance (Recruiter/HM in Org A; Viewer in Org B)
+    const recruiterUser = await tx.user.upsert({
+      where: { email: 'recruiter1@example.com' },
+      create: {
+        email: 'recruiter1@example.com',
+        password: devPasswordHash,
+        type: UserType.TEAM_MEMBER,
+        isActive: true,
+      },
+      update: { password: devPasswordHash, isActive: true },
+    });
+
+    const hmUser = await tx.user.upsert({
+      where: { email: 'hm1@example.com' },
+      create: {
+        email: 'hm1@example.com',
+        password: devPasswordHash,
+        type: UserType.TEAM_MEMBER,
+        isActive: true,
+      },
+      update: { password: devPasswordHash, isActive: true },
+    });
+
+    const viewerUserB = await tx.user.upsert({
+      where: { email: 'viewerb1@example.com' },
+      create: {
+        email: 'viewerb1@example.com',
+        password: devPasswordHash,
+        type: UserType.TEAM_MEMBER,
+        isActive: true,
+      },
+      update: { password: devPasswordHash, isActive: true },
+    });
+
     // 5) Memberships
     const membershipA = await tx.organizationMembership.upsert({
       where: { userId_companyId: { userId: devUser.id, companyId: orgA.id } },
@@ -158,10 +197,52 @@ async function main() {
       },
     });
 
+    const recruiterMembershipA = await tx.organizationMembership.upsert({
+      where: {
+        userId_companyId: { userId: recruiterUser.id, companyId: orgA.id },
+      },
+      create: { userId: recruiterUser.id, companyId: orgA.id, isActive: true },
+      update: { isActive: true, leftAt: null },
+    });
+
+    const hmMembershipA = await tx.organizationMembership.upsert({
+      where: { userId_companyId: { userId: hmUser.id, companyId: orgA.id } },
+      create: { userId: hmUser.id, companyId: orgA.id, isActive: true },
+      update: { isActive: true, leftAt: null },
+    });
+
+    const viewerMembershipB = await tx.organizationMembership.upsert({
+      where: {
+        userId_companyId: { userId: viewerUserB.id, companyId: orgB.id },
+      },
+      create: { userId: viewerUserB.id, companyId: orgB.id, isActive: true },
+      update: { isActive: true, leftAt: null },
+    });
+
     // 6) Role assignments (org-level: departmentId null)
     for (const [membership, role] of [
       [membershipA, AccessRole.ORG_ADMIN],
       [membershipB, AccessRole.VIEWER],
+    ] as const) {
+      const existing = await tx.membershipRole.findFirst({
+        where: { membershipId: membership.id, role, departmentId: null },
+      });
+      if (!existing) {
+        await tx.membershipRole.create({
+          data: {
+            membershipId: membership.id,
+            role,
+            departmentId: null,
+            isActive: true,
+          },
+        });
+      }
+    }
+
+    for (const [membership, role] of [
+      [recruiterMembershipA, AccessRole.RECRUITER],
+      [hmMembershipA, AccessRole.HM],
+      [viewerMembershipB, AccessRole.VIEWER],
     ] as const) {
       const existing = await tx.membershipRole.findFirst({
         where: { membershipId: membership.id, role, departmentId: null },

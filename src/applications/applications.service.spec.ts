@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ApplicationsService } from './applications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 describe('ApplicationsService', () => {
   let service: ApplicationsService;
@@ -8,6 +9,8 @@ describe('ApplicationsService', () => {
 
   const mockRunWithOrgContext = jest.fn();
   const mockJobFindMany = jest.fn();
+  const mockApplicationFindFirst = jest.fn();
+  const mockPipelineStageFindFirst = jest.fn();
 
   const ctx = {
     companyId: 1,
@@ -24,6 +27,8 @@ describe('ApplicationsService', () => {
           useValue: {
             runWithOrgContext: mockRunWithOrgContext,
             job: { findMany: mockJobFindMany },
+            application: { findFirst: mockApplicationFindFirst },
+            pipelineStage: { findFirst: mockPipelineStageFindFirst },
           },
         },
       ],
@@ -33,6 +38,8 @@ describe('ApplicationsService', () => {
     prisma = module.get<PrismaService>(PrismaService);
     mockRunWithOrgContext.mockReset();
     mockJobFindMany.mockReset();
+    mockApplicationFindFirst.mockReset();
+    mockPipelineStageFindFirst.mockReset();
   });
 
   it('should be defined', () => {
@@ -131,6 +138,39 @@ describe('ApplicationsService', () => {
 
       expect(result).toEqual([]);
       expect(mockRunWithOrgContext).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('moveStage', () => {
+    it('throws NotFoundException when application not found', async () => {
+      mockRunWithOrgContext.mockImplementation(
+        (_orgId: number, fn: (tx: any) => Promise<any>) =>
+          fn({ application: { findFirst: () => Promise.resolve(null) } }),
+      );
+      await expect(service.moveStage(ctx, 123, 9)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws ForbiddenException for recruiter without job access', async () => {
+      const recruiterCtx = { ...ctx, roleKey: 'recruiter' };
+      mockRunWithOrgContext.mockImplementation(
+        (_orgId: number, fn: (tx: any) => Promise<any>) =>
+          fn({
+            application: {
+              findFirst: () =>
+                Promise.resolve({
+                  id: 1,
+                  companyId: 1,
+                  jobId: 999,
+                  currentStageId: null,
+                }),
+            },
+          }),
+      );
+      mockJobFindMany.mockResolvedValue([{ id: 1 }]); // visible jobs do not include 999
+
+      await expect(service.moveStage(recruiterCtx, 1, 2)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 });

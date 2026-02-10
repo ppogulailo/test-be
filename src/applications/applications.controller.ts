@@ -1,9 +1,12 @@
 import {
   Controller,
   Get,
+  Param,
   ParseIntPipe,
+  Post,
   Query,
   UseGuards,
+  Body,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -18,6 +21,7 @@ import { OrgContextGuard } from '../common/context/org-context.guard';
 import { RequirePermissionGuard } from '../rbac/require-permission.guard';
 import { RequirePermission } from '../rbac/require-permission.decorator';
 import { ApplicationsService } from './applications.service';
+import { MoveApplicationStageDto } from './dto/move-stage.dto';
 
 @ApiTags('applications')
 @ApiBearerAuth('access_token')
@@ -55,5 +59,30 @@ export class ApplicationsController {
     };
 
     return this.applications.list(ctx, jobId);
+  }
+
+  @Post(':id/move-stage')
+  @RequirePermission('pipeline:move_stage')
+  @ApiOperation({
+    summary:
+      'Move application to a pipeline stage (HM/Admin: org-wide; Recruiter: only own/assigned jobs)',
+  })
+  @ApiResponse({ status: 200, description: 'Application moved' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  moveStage(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MoveApplicationStageDto,
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
+  ) {
+    return this.applications.moveStage(
+      {
+        companyId: Number(auth.currentOrgId),
+        userId: Number(auth.userId),
+        roleKey: auth.roleKey,
+      },
+      id,
+      dto.stageId,
+    );
   }
 }

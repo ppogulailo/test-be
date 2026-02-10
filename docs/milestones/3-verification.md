@@ -15,6 +15,7 @@
 - [ ] **Unit tests:** `npm test` — all RBAC-related tests pass (permission denial: `require-permission.guard.spec`; org isolation: `org-access.util.spec`; scope: `scope.util.spec`; role–permission: `role-permission-matrix.spec`). If a non-RBAC spec fails (e.g. missing app.controller), run `npm test -- --testPathIgnorePatterns=app.controller.spec`.
 - [ ] **Doc:** A new dev can protect an endpoint by following [How RBAC works](../architecture/how-rbac-works) (add permission in seed → guards + `@RequirePermission` → use `AuthCtx` in handler → scope/assert in service).
 - [ ] **Deny/allow in <10 min:** Follow “Reproduce deny/allow (manual)” below.
+- [ ] **RLS hard isolation (2B):** `npx ts-node scripts/verify-rls.ts` (connect as `ferdge_app`) — proves cross-org reads/writes are denied even if code omits filters.
 - [ ] **Audit:** No RBAC in frontend; no trust in client orgId; one Prisma schema.
 
 ---

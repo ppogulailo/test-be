@@ -8,37 +8,51 @@ const JOB_PERMISSIONS = [
   'job:update',
   'job:delete',
   'job:publish',
+  'candidate:read',
+  'pipeline:move_stage',
 ] as const;
 
 describe('Role–permission mapping (2A contract)', () => {
   const EXPECTED: Record<string, readonly string[]> = {
     admin: JOB_PERMISSIONS,
-    recruiter: ['job:create', 'job:read', 'job:update', 'job:publish'],
-    viewer: ['job:read'],
-    hm: ['job:create', 'job:read', 'job:update', 'job:publish'],
-    reviewer: ['job:read'],
+    recruiter: [
+      'job:create',
+      'job:read',
+      'job:update',
+      'job:publish',
+      'candidate:read',
+      'pipeline:move_stage',
+    ],
+    viewer: ['job:read', 'candidate:read'],
+    hm: ['job:read', 'candidate:read', 'pipeline:move_stage'],
+    reviewer: [],
   };
 
   it('admin has all job permissions', () => {
     expect(EXPECTED.admin).toEqual([...JOB_PERMISSIONS]);
   });
 
-  it('recruiter has job create, read, update, publish (no delete)', () => {
+  it('recruiter can manage own/assigned jobs and pipeline (no delete)', () => {
     expect(EXPECTED.recruiter).toContain('job:read');
     expect(EXPECTED.recruiter).toContain('job:create');
     expect(EXPECTED.recruiter).toContain('job:publish');
     expect(EXPECTED.recruiter).not.toContain('job:delete');
+    expect(EXPECTED.recruiter).toContain('candidate:read');
+    expect(EXPECTED.recruiter).toContain('pipeline:move_stage');
   });
 
-  it('viewer has only job:read', () => {
-    expect(EXPECTED.viewer).toEqual(['job:read']);
+  it('viewer has read-only access', () => {
+    expect(EXPECTED.viewer).toEqual(['job:read', 'candidate:read']);
   });
 
-  it('hm has same job permissions as recruiter (org-wide scope)', () => {
-    expect(EXPECTED.hm).toEqual(EXPECTED.recruiter);
+  it('hm has org-wide read + pipeline move (no job update)', () => {
+    expect(EXPECTED.hm).toContain('job:read');
+    expect(EXPECTED.hm).toContain('candidate:read');
+    expect(EXPECTED.hm).toContain('pipeline:move_stage');
+    expect(EXPECTED.hm).not.toContain('job:update');
   });
 
-  it('reviewer has job:read', () => {
-    expect(EXPECTED.reviewer).toContain('job:read');
+  it('reviewer is token-based (no org membership permissions by default)', () => {
+    expect(EXPECTED.reviewer).toEqual([]);
   });
 });

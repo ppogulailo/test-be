@@ -4,7 +4,7 @@ import type { Job, Prisma } from '@prisma/client';
  * Roles that see org-wide data (all jobs/applications in the org).
  * Recruiter sees only own (recruiterId = self) or assigned (JobAssignment) jobs.
  */
-const ORG_WIDE_ROLE_KEYS = new Set(['admin', 'hm', 'viewer', 'reviewer']);
+const ORG_WIDE_ROLE_KEYS = new Set(['admin', 'hm', 'viewer']);
 
 export function isOrgWideScope(roleKey: string): boolean {
   return ORG_WIDE_ROLE_KEYS.has(roleKey.toLowerCase());
@@ -41,7 +41,7 @@ export function jobWhereForScope(
 }
 
 /**
- * Recruiter can access a job only if they own it or are assigned. Admin/HM/Viewer/Reviewer can access any job in the org.
+ * Recruiter can access a job only if they own it or are assigned. Admin/HM/Viewer can access any job in the org.
  * Pass hasAssignment: true when the recruiter has an active JobAssignment for this job.
  */
 export function canAccessJob(

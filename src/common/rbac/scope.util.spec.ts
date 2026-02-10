@@ -2,11 +2,10 @@ import { isOrgWideScope, jobWhereForScope, canAccessJob } from './scope.util';
 
 describe('scope.util', () => {
   describe('isOrgWideScope', () => {
-    it('returns true for admin, hm, viewer, reviewer', () => {
+    it('returns true for admin, hm, viewer', () => {
       expect(isOrgWideScope('admin')).toBe(true);
       expect(isOrgWideScope('hm')).toBe(true);
       expect(isOrgWideScope('viewer')).toBe(true);
-      expect(isOrgWideScope('reviewer')).toBe(true);
     });
     it('returns false for recruiter', () => {
       expect(isOrgWideScope('recruiter')).toBe(false);

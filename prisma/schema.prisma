@@ -358,6 +358,9 @@ model User {
   roles UserRole[]
 
   jobsRecruiting Job[] @relation("UserRecruiterJobs")
+  approvalRequestedJobs Job[] @relation("JobApprovalRequestedBy")
+  approvedJobs          Job[] @relation("JobApprovedBy")
+  rejectedJobs          Job[] @relation("JobRejectedBy")
 
   // Application relations (createdBy only - candidates use CandidateProfile relation)
   createdApplications Application[]        @relation("CreatedApplications")
@@ -1408,6 +1411,16 @@ model Job {
   companyId              Int
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
+  approvalRequestedAt    DateTime?
+  approvalRequestedById  Int?
+  approvalRequestedBy    User?                   @relation("JobApprovalRequestedBy", fields: [approvalRequestedById], references: [id], onDelete: SetNull)
+  approvedAt             DateTime?
+  approvedById           Int?
+  approvedBy             User?                   @relation("JobApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectedAt             DateTime?
+  rejectedById           Int?
+  rejectedBy             User?                   @relation("JobRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectionReason        String?                 @db.Text
   JobCoreValueKeyword    JobCoreValueKeyword[]
   JobCoreValueWeighting  JobCoreValueWeighting[]
   JobBenchmarkProfile    JobBenchmarkProfile[]
@@ -1458,6 +1471,9 @@ model Job {
   @@index([departmentId, status, updatedAt])
   @@index([applicationClosingDate])
   @@index([isActive, status])
+  @@index([approvalRequestedAt])
+  @@index([approvedAt])
+  @@index([rejectedAt])
 }
 
 // Source: job.prisma
