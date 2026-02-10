@@ -33,6 +33,11 @@ Backend documentation lives in the **[docs/](./docs/)** folder:
 - **[docs/setup.md](./docs/setup.md)** — Environment, database, migrations, seed
 - **[docs/architecture.md](./docs/architecture.md)** — App structure, auth flow, org context, RBAC
 - **[docs/api-reference.md](./docs/api-reference.md)** — HTTP endpoints, request/response, auth
+- **Swagger UI** — When the app is running, open **http://localhost:4000/api** for interactive API docs (try endpoints, send JWT via Authorize).
+- **[docs/RLS_AND_DB_CONTEXT.md](./docs/RLS_AND_DB_CONTEXT.md)** — Milestone 2B: how RLS context is set, which tables are protected, two-role workflow, verification script.
+- **[docs/MILESTONE_2A_ACCEPTANCE.md](./docs/MILESTONE_2A_ACCEPTANCE.md)** — Milestone 2A: scope rules (Recruiter = own/assigned; HM/Admin = org-wide), role→permission mapping, endpoints covered, how to verify.
+- **[docs/HOW_RBAC_WORKS.md](./docs/HOW_RBAC_WORKS.md)** — How RBAC works, where to add permissions, how to protect a new endpoint (1–2 pages).
+- **[docs/MILESTONE_3_VERIFICATION.md](./docs/MILESTONE_3_VERIFICATION.md)** — Milestone 3: audit check, verification checklist, reproduce deny/allow in &lt;10 min.
 
 ## Project setup
 
@@ -187,9 +192,17 @@ Expected:
 - user is **viewer** in **Org B**
 
 ```bash
-# should be 200 in Org A (admin has job:publish)
+# Create a job first, then publish it (admin has job:publish)
+curl -s -X POST "http://localhost:4000/jobs" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Test","experience":"MID","employmentType":"LONG_TERM","workArrangement":"REMOTE","responsibilities":[],"requirements":[],"niceToHave":[],"perks":[],"whoYouAre":[],"tags":[]}'
+# Note the returned job id (e.g. 1), then:
 curl -i -X POST "http://localhost:4000/jobs/publish" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":1}'
+# Expect 200 in Org A.
 ```
 
 Now switch to Org B (grab Org B id from `/orgs` response):
@@ -200,9 +213,12 @@ curl -s -X POST "http://localhost:4000/orgs/<ORG_B_ID>/switch" \
 ```
 
 ```bash
-# should be 403 in Org B (viewer does NOT have job:publish)
+# 403 in Org B (viewer does NOT have job:publish)
 curl -i -X POST "http://localhost:4000/jobs/publish" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":1}'
+# Expect 403.
 ```
 
 ## Compile and run the project

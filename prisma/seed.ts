@@ -42,9 +42,8 @@ const ROLE_PERMISSION_MATRIX: Record<AccessRole, string[]> = {
     'job:publish',
   ],
   [AccessRole.VIEWER]: ['job:read'],
-  // Existing roles (not used in Milestone 1 seed)
-  [AccessRole.HM]: [],
-  [AccessRole.REVIEWER]: [],
+  [AccessRole.HM]: ['job:create', 'job:read', 'job:update', 'job:publish'],
+  [AccessRole.REVIEWER]: ['job:read'],
 };
 
 function splitPermissionName(name: string): { domain: string; action: string } {

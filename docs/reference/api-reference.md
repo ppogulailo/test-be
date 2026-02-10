@@ -149,7 +149,7 @@ Issue a new access token using the refresh token cookie. Sets new `access_token`
 
 Base path: `/orgs`
 
-All org endpoints require JWT and org context. Current org and list are resolved server-side from the user’s memberships and `UserCurrentOrg`; **no client-sent org id is trusted** for “current org”.
+All org endpoints require JWT and org context. Current org and list are resolved server-side from the user's memberships and `UserCurrentOrg`; **no client-sent org id is trusted** for "current org".
 
 ---
 
@@ -237,24 +237,93 @@ Create a job (stub). Used to demonstrate permission `job:create`.
 
 ---
 
+### GET /jobs
+
+List jobs for the current org only (org-scoped).
+
+**Auth:** Required (JWT + org context). **Permission:** `job:read`
+
+**Response:** `200` — array of jobs (id, title, status, companyId, createdAt, updatedAt).
+
+**Errors:** `401` not authenticated; `403` no org context or missing `job:read`.
+
+---
+
+### GET /jobs/:id
+
+Get one job. **403** if the job belongs to another org.
+
+**Auth:** Required. **Permission:** `job:read`
+
+**Errors:** `403` wrong org; `404` not found.
+
+---
+
+### POST /jobs
+
+Create a job in the current org. **Permission:** `job:create`
+
+**Request body:** See CreateJobDto (title, experience, employmentType, workArrangement, responsibilities, requirements, niceToHave, perks, whoYouAre, tags; optional education, location).
+
+**Response:** `201` — created job (id, title, status, companyId, createdAt).
+
+**Errors:** `403` missing permission; `400` validation.
+
+---
+
 ### POST /jobs/publish
 
-Publish a job (stub). Used to demonstrate permission `job:publish`.
+Publish a job by id. Requires `job:publish`. **403** if job is in another org.
 
 **Auth:** Required (JWT + org context)
 
 **Permission:** `job:publish`
 
-**Response:** `200`
+**Request body:**
 
 ```json
 {
-  "ok": true,
-  "orgId": "1"
+  "jobId": 1
 }
 ```
 
-**Errors:** `401` not authenticated; `403` no org context or missing `job:publish`.
+**Response:** `200` — updated job (id, title, status, companyId, updatedAt).
+
+**Errors:** `401` not authenticated; `403` no org context, missing `job:publish`, or job in another org; `404` job not found.
+
+---
+
+### POST /jobs/:id/publish
+
+Same as POST /jobs/publish but job id in path. **Permission:** `job:publish`
+
+---
+
+## Applications (pipeline)
+
+Base path: `/applications`
+
+All application endpoints require JWT, org context, and the specified permission(s). Queries are scoped by current org; no cross-org data is returned.
+
+---
+
+### GET /applications
+
+List applications for the current org (pipeline). Optional filter by job.
+
+**Auth:** Required (JWT + org context). **Permission:** `job:read`
+
+**Query:**
+
+| Param  | Type   | Description        |
+|--------|--------|--------------------|
+| jobId  | number | Optional. Filter by job id. |
+
+**Response:** `200`
+
+Array of applications (id, jobId, candidateProfileId, companyId, status, submittedAt, updatedAt). Only applications for the current org are returned.
+
+**Errors:** `401` not authenticated; `403` no org context or missing `job:read`.
 
 ---
 

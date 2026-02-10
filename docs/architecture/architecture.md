@@ -33,7 +33,7 @@ src/
 │   ├── organizations.service.ts     # listForUser, switchOrg
 │   └── organizations.module.ts
 ├── jobs/
-│   ├── jobs.controller.ts     # POST /jobs (job:create), POST /jobs/publish (job:publish)
+│   ├── jobs.controller.ts     # GET/POST /jobs, POST /jobs/publish, POST /jobs/:id/publish (job:read, job:create, job:publish)
 │   └── jobs.module.ts
 ├── rbac/
 │   ├── require-permission.decorator.ts  # @RequirePermission('permission:action')
@@ -61,13 +61,13 @@ src/
 
 ## Organization context flow
 
-For routes that need “current org” and permissions (e.g. `/orgs`, `/jobs/*`):
+For routes that need "current org" and permissions (e.g. `/orgs`, `/jobs/*`):
 
 1. **JwtAuthGuard** runs first and sets `req.user` from the JWT.
 2. **OrgContextGuard** runs next. It calls `OrgContextService.resolveAuthContext(req.user)`:
    - Reads `UserCurrentOrg` for the user; if set and user is still a member of that org, uses that as current org.
-   - Otherwise uses the user’s first active `OrganizationMembership` and (optionally) writes it to `UserCurrentOrg`.
-   - Loads the user’s role in that org from `MembershipRole` (org-level: `departmentId` null).
+   - Otherwise uses the user's first active `OrganizationMembership` and (optionally) writes it to `UserCurrentOrg`.
+   - Loads the user's role in that org from `MembershipRole` (org-level: `departmentId` null).
    - Loads permissions from `RolePermissionMapping` for that role.
    - Returns `AuthContext`: `userId`, `email`, `currentOrgId`, `roleKey`, `permissions`.
 3. The guard sets `req.authContext = authContext`. Handlers can use `@AuthCtx() ctx`, `@CurrentOrgId() orgId`, or `@UserId() userId`.
@@ -78,9 +78,9 @@ For routes that need “current org” and permissions (e.g. `/orgs`, `/jobs/*`)
 
 ## RBAC (permissions)
 
-- **Model:** Permissions are stored in `AccessPermission` (e.g. `job:create`, `job:publish`). `RolePermissionMapping` links `AccessRole` (e.g. ORG_ADMIN, RECRUITER, VIEWER) to permissions. A user’s permissions in a request are the permissions of their **current-org role** (from `MembershipRole` + `RolePermissionMapping`).
+- **Model:** Permissions are stored in `AccessPermission` (e.g. `job:create`, `job:publish`). `RolePermissionMapping` links `AccessRole` (e.g. ORG_ADMIN, RECRUITER, VIEWER) to permissions. A user's permissions in a request are the permissions of their **current-org role** (from `MembershipRole` + `RolePermissionMapping`).
 - **Usage:** Controllers that need a specific permission use `@RequirePermission('permission:action')` and `RequirePermissionGuard`. The guard runs after `OrgContextGuard` and checks that `req.authContext.permissions` includes every required permission. If not, it returns **403 Forbidden**.
-- **Example:** `POST /jobs/publish` requires `job:publish`. User in Org A (ORG_ADMIN) has it → 200. Same user in Org B (VIEWER) does not → 403.
+- **Example:** `POST /jobs/publish` (body: `{ "jobId": 1 }`) requires `job:publish`. User in Org A (ORG_ADMIN) has it → 200. Same user in Org B (VIEWER) does not → 403.
 
 ---
 
@@ -107,7 +107,7 @@ For routes that use both org context and permissions (e.g. jobs):
 | `AccessPermission` | Canonical permission names (e.g. job:create, job:publish). |
 | `RolePermissionMapping` | Which `AccessRole` has which `AccessPermission`. |
 
-Current org is determined by `UserCurrentOrg` or, if missing, the first active membership. Permissions are determined by the user’s role(s) in the current org via `MembershipRole` and `RolePermissionMapping`.
+Current org is determined by `UserCurrentOrg` or, if missing, the first active membership. Permissions are determined by the user's role(s) in the current org via `MembershipRole` and `RolePermissionMapping`.
 
 ---
 
