@@ -75,4 +75,17 @@ export class OrganizationsController {
       Number(ctx.currentOrgId),
     );
   }
+
+  @Get('current/recruiters')
+  @ApiOperation({
+    summary: 'Get list of recruiters in current organization',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'List of recruiters',
+  })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  async getRecruiters(@AuthCtx() ctx: AuthContext) {
+    return this.orgs.getRecruiters(Number(ctx.currentOrgId));
+  }
 }

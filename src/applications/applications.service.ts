@@ -54,6 +54,169 @@ export class ApplicationsService {
   }
 
   /**
+   * Schedule interview for an application
+   */
+  async scheduleInterview(
+    ctx: ApplicationScopeContext,
+    applicationId: number,
+    dto: {
+      userId: number;
+      jobId: number;
+      startAt: Date;
+      endAt?: Date;
+      mode?: any;
+      location?: string;
+      notes?: string;
+    },
+  ) {
+    const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.findFirst({
+        where: { id: applicationId },
+        select: { id: true, companyId: true, jobId: true },
+      }),
+    );
+
+    if (!app) throw new NotFoundException('Application not found');
+    if (app.companyId !== ctx.companyId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const interview = await this.prisma.runWithOrgContext(
+      ctx.companyId,
+      async (tx) => {
+        const created = await tx.interview.create({
+          data: {
+            applicationId: applicationId,
+            scheduledById: ctx.userId,
+            scheduledAt: dto.startAt,
+            type: dto.mode || 'VIDEO',
+            status: 'SCHEDULED',
+            description: dto.notes ?? null,
+          },
+        });
+
+        // Update application status
+        await tx.application.update({
+          where: { id: applicationId },
+          data: { status: 'INTERVIEW_SCHEDULED' },
+        });
+
+        return created;
+      },
+    );
+
+    return { id: String(interview.id), status: 'SCHEDULED' };
+  }
+
+  /**
+   * Shortlist an application
+   */
+  async shortlist(ctx: ApplicationScopeContext, applicationId: number) {
+    const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.findFirst({
+        where: { id: applicationId },
+        select: { id: true, companyId: true },
+      }),
+    );
+
+    if (!app) throw new NotFoundException('Application not found');
+    if (app.companyId !== ctx.companyId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updated = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.update({
+        where: { id: applicationId },
+        data: { status: 'SHORTLISTED' },
+        select: { id: true, status: true },
+      }),
+    );
+
+    return { id: String(updated.id), status: updated.status };
+  }
+
+  /**
+   * Extend offer to an application
+   */
+  async extendOffer(ctx: ApplicationScopeContext, applicationId: number) {
+    const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.findFirst({
+        where: { id: applicationId },
+        select: { id: true, companyId: true },
+      }),
+    );
+
+    if (!app) throw new NotFoundException('Application not found');
+    if (app.companyId !== ctx.companyId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updated = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.update({
+        where: { id: applicationId },
+        data: { status: 'OFFERED' },
+        select: { id: true, status: true },
+      }),
+    );
+
+    return { id: String(updated.id), status: updated.status };
+  }
+
+  /**
+   * Accept offer
+   */
+  async acceptOffer(ctx: ApplicationScopeContext, applicationId: number) {
+    const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.findFirst({
+        where: { id: applicationId },
+        select: { id: true, companyId: true },
+      }),
+    );
+
+    if (!app) throw new NotFoundException('Application not found');
+    if (app.companyId !== ctx.companyId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updated = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.update({
+        where: { id: applicationId },
+        data: { status: 'HIRED', offerAcceptedAt: new Date() },
+        select: { id: true, status: true },
+      }),
+    );
+
+    return { id: String(updated.id), status: updated.status };
+  }
+
+  /**
+   * Decline offer
+   */
+  async declineOffer(ctx: ApplicationScopeContext, applicationId: number) {
+    const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.findFirst({
+        where: { id: applicationId },
+        select: { id: true, companyId: true },
+      }),
+    );
+
+    if (!app) throw new NotFoundException('Application not found');
+    if (app.companyId !== ctx.companyId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updated = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.application.update({
+        where: { id: applicationId },
+        data: { status: 'REJECTED' },
+        select: { id: true, status: true },
+      }),
+    );
+
+    return { id: String(updated.id), status: updated.status };
+  }
+
+  /**
    * Move application to a new pipeline stage. Enforces org isolation and recruiter scope.
    */
   async moveStage(

@@ -92,4 +92,50 @@ export class OrganizationsService {
       overrides,
     };
   }
+
+  async getRecruiters(orgId: number) {
+    const memberships = await this.prisma.organizationMembership.findMany({
+      where: {
+        companyId: orgId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
+            },
+          },
+        },
+        roleAssignments: {
+          where: { isActive: true, departmentId: null },
+          orderBy: { assignedAt: 'desc' },
+          take: 1,
+          select: { role: true },
+        },
+      },
+    });
+
+    return memberships.map((m) => {
+      const role = m.roleAssignments[0]?.role ?? AccessRole.RECRUITER;
+      const fullName = m.user.profile?.firstName && m.user.profile?.lastName
+        ? `${m.user.profile.firstName} ${m.user.profile.lastName}`
+        : m.user.email;
+      
+      return {
+        id: String(m.id),
+        name: fullName,
+        email: m.user.email,
+        phoneNumber: m.user.profile?.phone || null,
+        role: accessRoleToKey(role),
+      };
+    });
+  }
 }
