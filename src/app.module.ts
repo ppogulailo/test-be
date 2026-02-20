@@ -8,6 +8,7 @@ import { RbacModule } from './rbac/rbac.module';
 import { JobsModule } from './jobs/jobs.module';
 import { ApplicationsModule } from './applications/applications.module';
 import { CandidatesModule } from './candidates/candidates.module';
+import { DevModule } from './dev/dev.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CandidatesModule } from './candidates/candidates.module';
     JobsModule,
     ApplicationsModule,
     CandidatesModule,
+    DevModule, // RBAC smoke testing
   ],
 })
 export class AppModule {}
