@@ -74,17 +74,66 @@ export class AuthService {
     return this.issueTokens(user.id, user.email);
   }
 
-  async getMe(
-    userId: number,
-  ): Promise<{ id: number; email: string; type: UserType }> {
+  async getMe(userId: number): Promise<{
+    id: number;
+    email: string;
+    type: UserType;
+    rbacRole?: string; // NEW: RBAC role from membership_roles
+    company?: {
+      id: number;
+      name: string;
+      subscriptionTier: string;
+      subscriptionStatus: string;
+    };
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, type: true },
+      select: {
+        id: true,
+        email: true,
+        type: true,
+        companyId: true,
+        company: {
+          select: {
+            id: true,
+            name: true,
+            subscriptionTier: true,
+            subscriptionStatus: true,
+          },
+        },
+      },
     });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
-    return user;
+    
+    // Fetch RBAC role from membership_roles (separate query for cleaner types)
+    const membership = await this.prisma.organizationMembership.findFirst({
+      where: { 
+        userId: userId,
+        isActive: true,
+      },
+      include: {
+        roleAssignments: {
+          where: { isActive: true },
+          select: {
+            role: true,
+          },
+          take: 1,
+        },
+      },
+    });
+    
+    const rbacRole = membership?.roleAssignments?.[0]?.role;
+
+    // Convert null to undefined for API consistency
+    return {
+      id: user.id,
+      email: user.email,
+      type: user.type,
+      rbacRole: rbacRole ?? undefined,
+      company: user.company ?? undefined,
+    };
   }
 
   async logout(userId: number): Promise<void> {

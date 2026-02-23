@@ -68,12 +68,22 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   @ApiOperation({ summary: 'Get current user' })
-  @ApiResponse({ status: 200, description: 'Current user id, email, role (client | candidate)' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Current user id, email, role (client | candidate), and company subscription info',
+  })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
   async me(@CurrentUser() user: RequestUser) {
     const me = await this.auth.getMe(user.userId);
     const role = me.type === UserType.CANDIDATE ? 'candidate' : 'client';
-    return { id: me.id, email: me.email, role };
+    return {
+      id: me.id,
+      email: me.email,
+      role,
+      rbacRole: me.rbacRole, // NEW: Return RBAC role (RECRUITER, HM, etc.)
+      company: me.company,
+    };
   }
 
   @UseGuards(JwtAuthGuard)

@@ -7,7 +7,10 @@ import { AppModule } from './app.module';
 
 const config = {
   port: Number(process.env.PORT) || 4000,
-  corsOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000',
+  corsOrigin: [
+    'https://fellor-frond-21ehv9zpx-ferdge-project-2025.vercel.app',
+    'http://localhost:3000',
+  ],
 };
 
 async function bootstrap() {
@@ -31,10 +34,18 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Ferdge API')
-    .setDescription('Backend API: auth, organizations, jobs, applications. Protected routes require JWT (Bearer or cookie).')
+    .setDescription(
+      'Backend API: auth, organizations, jobs, applications. Protected routes require JWT (Bearer or cookie).',
+    )
     .setVersion('1.0')
     .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', in: 'header', name: 'Authorization' },
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        in: 'header',
+        name: 'Authorization',
+      },
       'access_token',
     )
     .build();

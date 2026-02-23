@@ -13,20 +13,30 @@ const JOB_PERMISSIONS = [
 ] as const;
 
 describe('Role–permission mapping (2A contract)', () => {
-  const EXPECTED: Record<string, readonly string[]> = {
-    admin: JOB_PERMISSIONS,
-    recruiter: [
-      'job:create',
-      'job:read',
-      'job:update',
-      'job:publish',
-      'candidate:read',
-      'pipeline:move_stage',
-    ],
-    viewer: ['job:read', 'candidate:read'],
-    hm: ['job:read', 'candidate:read', 'pipeline:move_stage'],
-    reviewer: [],
-  };
+const EXPECTED: Record<string, readonly string[]> = {
+  admin: JOB_PERMISSIONS,
+  recruiter: [
+    'job:create',
+    'job:read',           // Scope: own + assigned (via JobAssignment)
+    'job:update',         // Scope: own + assigned
+    'job:publish',
+    'job:request_approval', // NEW: Request approval for own jobs
+    'candidate:read',     // Scope: tied to own/assigned jobs
+    'pipeline:move_stage', // Scope: own/assigned jobs only
+    'talent_pool:manage', // Scope: recruiter-owned pools only
+  ],
+  viewer: ['job:read', 'candidate:read'],
+  hm: [
+    'job:read',           // Scope: org-wide
+    'job:approve',        // NEW: Approve any job in org
+    'job:reject',         // NEW: Reject any job in org
+    'job:assign',         // NEW: Assign jobs to recruiters
+    'candidate:read',     // Scope: org-wide
+    'pipeline:move_stage', // Scope: org-wide
+    'analytics:view_org', // Scope: org-wide metrics
+  ],
+  reviewer: [],
+};
 
   it('admin has all job permissions', () => {
     expect(EXPECTED.admin).toEqual([...JOB_PERMISSIONS]);
