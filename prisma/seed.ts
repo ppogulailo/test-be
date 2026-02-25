@@ -101,6 +101,7 @@ async function main() {
   await prisma.$executeRawUnsafe('ALTER TABLE "Job" NO FORCE ROW LEVEL SECURITY');
   await prisma.$executeRawUnsafe('ALTER TABLE "Application" NO FORCE ROW LEVEL SECURITY');
   await prisma.$executeRawUnsafe('ALTER TABLE "PipelineStage" NO FORCE ROW LEVEL SECURITY');
+  await prisma.$executeRawUnsafe('ALTER TABLE report_templates NO FORCE ROW LEVEL SECURITY');
 
   await prisma.$transaction(async (tx) => {
     // 1) Canonical permissions (type inferred from upsert return)
@@ -1161,12 +1162,53 @@ async function main() {
     console.log('  • HM (Org A): Can see BOTH Job 1 & Job 2 (org-wide access)');
     console.log('  • Users from Org B: Cannot see any Org A jobs (cross-org isolation)');
     console.log('');
+
+    // ── Report Templates (Org A) ───────────────────────────────────────────
+    const reportTemplates = [
+      {
+        title: 'Applications Export',
+        description: 'All applications with stage, status and interview counts',
+        tag: 'Live',
+        exportType: 'applications',
+        format: 'csv',
+        generatedAt: new Date(Date.now() - 2 * 60 * 1000),
+      },
+      {
+        title: 'Pipeline History Export',
+        description: 'Full stage-transition audit trail for every candidate',
+        tag: 'Live',
+        exportType: 'pipeline',
+        format: 'csv',
+        generatedAt: new Date(Date.now() - 5 * 60 * 1000),
+      },
+      {
+        title: 'Full Analytics (JSON)',
+        description: 'Funnel rates, time-in-stage and conversion metrics',
+        tag: 'Live',
+        exportType: 'applications',
+        format: 'json',
+        generatedAt: new Date(Date.now() - 10 * 60 * 1000),
+      },
+    ];
+
+    for (const tpl of reportTemplates) {
+      const existing = await tx.reportTemplate.findFirst({
+        where: { companyId: orgA.id, title: tpl.title },
+      });
+      if (!existing) {
+        await tx.reportTemplate.create({
+          data: { ...tpl, companyId: orgA.id },
+        });
+      }
+    }
+    console.log('✅ Report templates seeded for Org A');
   });
 
   // Restore FORCE ROW LEVEL SECURITY after the transaction completes
   await prisma.$executeRawUnsafe('ALTER TABLE "PipelineStage" FORCE ROW LEVEL SECURITY');
   await prisma.$executeRawUnsafe('ALTER TABLE "Application" FORCE ROW LEVEL SECURITY');
   await prisma.$executeRawUnsafe('ALTER TABLE "Job" FORCE ROW LEVEL SECURITY');
+  await prisma.$executeRawUnsafe('ALTER TABLE report_templates FORCE ROW LEVEL SECURITY');
 }
 
 main()
