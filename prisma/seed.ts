@@ -96,6 +96,12 @@ async function getOrCreateCompany(tx: Prisma.TransactionClient, name: string) {
 }
 
 async function main() {
+  // Lift FORCE ROW LEVEL SECURITY so FK checks on these tables work while
+  // app.current_org_id is unset during seeding. Restored after the transaction.
+  await prisma.$executeRawUnsafe('ALTER TABLE "Job" NO FORCE ROW LEVEL SECURITY');
+  await prisma.$executeRawUnsafe('ALTER TABLE "Application" NO FORCE ROW LEVEL SECURITY');
+  await prisma.$executeRawUnsafe('ALTER TABLE "PipelineStage" NO FORCE ROW LEVEL SECURITY');
+
   await prisma.$transaction(async (tx) => {
     // 1) Canonical permissions (type inferred from upsert return)
     const permissions: Array<{
@@ -887,6 +893,229 @@ async function main() {
       });
     }
 
+    // ========================================
+    // DASHBOARD DEMO DATA
+    // ========================================
+
+    // --- Extra candidates ---
+    const candidateUsers = await Promise.all(
+      [
+        { email: 'alice@demo.com', first: 'Alice', last: 'Martin', title: 'Product Designer' },
+        { email: 'bob@demo.com', first: 'Bob', last: 'Chen', title: 'Backend Engineer' },
+        { email: 'carol@demo.com', first: 'Carol', last: 'Davis', title: 'Full-stack Developer' },
+        { email: 'dave@demo.com', first: 'Dave', last: 'Wilson', title: 'React Developer' },
+        { email: 'eve@demo.com', first: 'Eve', last: 'Smith', title: 'Senior Engineer' },
+      ].map(async (c) => {
+        const u = await tx.user.upsert({
+          where: { email: c.email },
+          create: { email: c.email, password: devPasswordHash, type: UserType.CANDIDATE, isActive: true },
+          update: { password: devPasswordHash },
+        });
+        const p = await tx.candidateProfile.upsert({
+          where: { userId: u.id },
+          create: { userId: u.id, firstName: c.first, lastName: c.last, jobTitle: c.title },
+          update: { firstName: c.first, lastName: c.last },
+        });
+        return { user: u, profile: p };
+      }),
+    );
+
+    // PipelineStage has a unique constraint on (companyId, name).
+    // Stages are shared per-company; we look up or create by (companyId, name).
+    const stageNames = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired'] as const;
+    const stageTypes = ['INITIAL', 'SHORTLIST', 'INTERVIEW', 'OFFER', 'CUSTOM'] as const;
+    const stages: { id: number; type: string }[] = [];
+
+    for (let i = 0; i < stageNames.length; i++) {
+      const existing = await tx.pipelineStage.findFirst({
+        where: { companyId: orgA.id, name: stageNames[i] },
+      });
+      const stage = existing ?? await tx.pipelineStage.create({
+        data: {
+          name: stageNames[i],
+          type: stageTypes[i],
+          position: i + 1,
+          isInitialStage: i === 0,
+          jobId: jobOrgA.id,
+          companyId: orgA.id,
+        },
+      });
+      stages.push({ id: stage.id, type: stageTypes[i] });
+    }
+
+    const [appliedStage, , interviewStage] = stages;
+
+    // Job 2 reuses the same shared stages (same org, same stage names)
+    const stages2 = stages;
+
+    // --- Applications with varying statuses ---
+    type AppStatus = 'SUBMITTED' | 'SHORTLISTED' | 'INTERVIEW_SCHEDULED' | 'OFFERED' | 'HIRED' | 'REJECTED';
+    const appSeeds: { profileId: number; jobId: number; companyId: number; status: AppStatus; stageIdx: number }[] = [
+      { profileId: candidateUsers[0].profile.id, jobId: jobOrgA.id, companyId: orgA.id, status: 'SHORTLISTED', stageIdx: 1 },
+      { profileId: candidateUsers[1].profile.id, jobId: jobOrgA.id, companyId: orgA.id, status: 'INTERVIEW_SCHEDULED', stageIdx: 2 },
+      { profileId: candidateUsers[2].profile.id, jobId: jobOrgA.id, companyId: orgA.id, status: 'OFFERED', stageIdx: 3 },
+      { profileId: candidateUsers[3].profile.id, jobId: job2OrgA.id, companyId: orgA.id, status: 'SUBMITTED', stageIdx: 0 },
+      { profileId: candidateUsers[4].profile.id, jobId: job2OrgA.id, companyId: orgA.id, status: 'SHORTLISTED', stageIdx: 1 },
+      // candidate1 already has SUBMITTED on job1 — skip duplicate
+    ];
+
+    const createdApps: { id: number; jobId: number; companyId: number; currentStageId: number | null }[] = [];
+
+    for (const seed of appSeeds) {
+      const existing = await tx.application.findFirst({
+        where: { candidateProfileId: seed.profileId, jobId: seed.jobId },
+      });
+      const stageId = seed.jobId === jobOrgA.id
+        ? stages[seed.stageIdx].id
+        : stages2[seed.stageIdx].id;
+
+      const app = existing
+        ? await tx.application.update({
+            where: { id: existing.id },
+            data: { status: seed.status, currentStageId: stageId },
+            select: { id: true, jobId: true, companyId: true, currentStageId: true },
+          })
+        : await tx.application.create({
+            data: {
+              candidateProfileId: seed.profileId,
+              jobId: seed.jobId,
+              companyId: seed.companyId,
+              status: seed.status,
+              currentStageId: stageId,
+            },
+            select: { id: true, jobId: true, companyId: true, currentStageId: true },
+          });
+
+      createdApps.push(app);
+
+      // Pipeline row
+      await tx.pipeline.upsert({
+        where: { applicationId_stageId: { applicationId: app.id, stageId } },
+        create: { applicationId: app.id, stageId, movedById: recruiterUser.id, movedAt: new Date() },
+        update: { movedAt: new Date() },
+      });
+
+      // History: Applied → current stage (two rows for any stage > 0)
+      const historyCount = await tx.applicationHistory.count({ where: { applicationId: app.id } });
+      if (historyCount === 0) {
+        await tx.applicationHistory.create({
+          data: {
+            applicationId: app.id,
+            fromStageId: null,
+            toStageId: appliedStage.id,
+            changedById: recruiterUser.id,
+            changedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+          },
+        });
+        if (seed.stageIdx > 0) {
+          await tx.applicationHistory.create({
+            data: {
+              applicationId: app.id,
+              fromStageId: appliedStage.id,
+              toStageId: stageId,
+              changedById: recruiterUser.id,
+              changedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+            },
+          });
+        }
+      }
+    }
+
+    // --- Upcoming interview (2 days from now) ---
+    const interviewApp = createdApps.find((a) => a.jobId === jobOrgA.id && a.currentStageId === interviewStage.id);
+    if (interviewApp) {
+      const existingInterview = await tx.interview.findFirst({
+        where: { applicationId: interviewApp.id },
+      });
+      if (!existingInterview) {
+        await tx.interview.create({
+          data: {
+            applicationId: interviewApp.id,
+            scheduledById: recruiterUser.id,
+            scheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+            type: 'VIDEO',
+            status: 'SCHEDULED',
+            description: 'Technical interview – system design round',
+          },
+        });
+      }
+    }
+
+    // --- JobStats for Job 1 ---
+    await tx.jobStats.upsert({
+      where: { jobId: jobOrgA.id },
+      create: {
+        jobId: jobOrgA.id,
+        companyId: orgA.id,
+        applicantCount: 4,
+        shortlistedCount: 2,
+        interviewedCount: 1,
+        offeredCount: 1,
+        hiredCount: 0,
+        lastCalculatedAt: new Date(),
+      },
+      update: {
+        applicantCount: 4,
+        shortlistedCount: 2,
+        interviewedCount: 1,
+        offeredCount: 1,
+        hiredCount: 0,
+        lastCalculatedAt: new Date(),
+      },
+    });
+
+    // --- JobStats for Job 2 ---
+    await tx.jobStats.upsert({
+      where: { jobId: job2OrgA.id },
+      create: {
+        jobId: job2OrgA.id,
+        companyId: orgA.id,
+        applicantCount: 2,
+        shortlistedCount: 1,
+        interviewedCount: 0,
+        offeredCount: 0,
+        hiredCount: 0,
+        lastCalculatedAt: new Date(),
+      },
+      update: {
+        applicantCount: 2,
+        shortlistedCount: 1,
+        interviewedCount: 0,
+        offeredCount: 0,
+        hiredCount: 0,
+        lastCalculatedAt: new Date(),
+      },
+    });
+
+    // --- RecruiterPerformanceLog entries (last 30 days) ---
+    const perfActivities = [
+      { type: 'pipeline_moved', daysAgo: 1 },
+      { type: 'pipeline_moved', daysAgo: 2 },
+      { type: 'pipeline_moved', daysAgo: 3 },
+      { type: 'interview_scheduled', daysAgo: 2 },
+      { type: 'candidate_shortlisted', daysAgo: 4 },
+      { type: 'candidate_shortlisted', daysAgo: 5 },
+      { type: 'offer_sent', daysAgo: 1 },
+    ];
+
+    for (const activity of perfActivities) {
+      await tx.recruiterPerformanceLog.create({
+        data: {
+          recruiterId: recruiterUser.id,
+          companyId: orgA.id,
+          jobId: jobOrgA.id,
+          activityType: activity.type,
+          loggedAt: new Date(Date.now() - activity.daysAgo * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    // Keep Job autoincrement ahead after explicit IDs (1,2,3) used above.
+    // Sequence-only bump is safe even when FORCE RLS blocks table-wide MAX(id).
+    await tx.$executeRawUnsafe(
+      `SELECT setval('"Job_id_seq"', last_value + 1000, true) FROM "Job_id_seq"`,
+    );
+
     // Re-enable RLS after seeding
     await tx.$executeRawUnsafe('SET row_security = on');
 
@@ -933,6 +1162,11 @@ async function main() {
     console.log('  • Users from Org B: Cannot see any Org A jobs (cross-org isolation)');
     console.log('');
   });
+
+  // Restore FORCE ROW LEVEL SECURITY after the transaction completes
+  await prisma.$executeRawUnsafe('ALTER TABLE "PipelineStage" FORCE ROW LEVEL SECURITY');
+  await prisma.$executeRawUnsafe('ALTER TABLE "Application" FORCE ROW LEVEL SECURITY');
+  await prisma.$executeRawUnsafe('ALTER TABLE "Job" FORCE ROW LEVEL SECURITY');
 }
 
 main()
