@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { JobStatus } from '@prisma/client';
+import { JobStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertOrgAccess } from '../common/rbac/org-access.util';
 import {
@@ -92,28 +92,63 @@ export class JobsService {
    */
   async create(ctx: JobScopeContext, dto: CreateJobDto) {
     const recruiterId = isOrgWideScope(ctx.roleKey) ? null : ctx.userId;
-    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
-      tx.job.create({
-        data: {
-          title: dto.title,
-          experience: dto.experience,
-          employmentType: dto.employmentType,
-          workArrangement: dto.workArrangement,
-          responsibilities: dto.responsibilities,
-          requirements: dto.requirements,
-          niceToHave: dto.niceToHave,
-          perks: dto.perks,
-          whoYouAre: dto.whoYouAre,
-          education: dto.education ?? null,
-          location: dto.location ?? null,
-          tags: dto.tags,
-          companyId: ctx.companyId,
-          recruiterId,
-          status: JobStatus.DRAFT,
-        },
-        select: jobListSelect,
-      }),
+    const createJob = () =>
+      this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+        tx.job.create({
+          data: {
+            title: dto.title,
+            experience: dto.experience,
+            employmentType: dto.employmentType,
+            workArrangement: dto.workArrangement,
+            responsibilities: dto.responsibilities,
+            requirements: dto.requirements,
+            niceToHave: dto.niceToHave,
+            perks: dto.perks,
+            whoYouAre: dto.whoYouAre,
+            education: dto.education ?? null,
+            location: dto.location ?? null,
+            tags: dto.tags,
+            companyId: ctx.companyId,
+            recruiterId,
+            status: JobStatus.DRAFT,
+          },
+          select: jobListSelect,
+        }),
+      );
+
+    try {
+      return await createJob();
+    } catch (error) {
+      if (!this.isJobUniqueConstraintError(error)) {
+        throw error;
+      }
+
+      await this.realignJobIdSequence();
+
+      return createJob();
+    }
+  }
+
+  private async realignJobIdSequence() {
+    // Some environments enforce FORCE RLS on Job, so reading MAX(id) is blocked.
+    // Bump the sequence well ahead without touching Job rows, then retry insert.
+    await this.prisma.$executeRawUnsafe(
+      `SELECT setval('"Job_id_seq"', last_value + 1000, true) FROM "Job_id_seq"`,
     );
+  }
+
+  private isJobUniqueConstraintError(
+    error: unknown,
+  ): error is Prisma.PrismaClientKnownRequestError {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+
+    if (error.code !== 'P2002') {
+      return false;
+    }
+
+    return (error.meta as { modelName?: string } | undefined)?.modelName === 'Job';
   }
 
   /**

@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -15,7 +16,72 @@ export type ApplicationScopeContext = {
 
 @Injectable()
 export class ApplicationsService {
+  private readonly logger = new Logger(ApplicationsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Fire-and-forget: log recruiter activity and update JobStats counters.
+   * Runs outside the main transaction so it never blocks the response.
+   */
+  private logActivity(
+    recruiterId: number,
+    companyId: number,
+    jobId: number | null,
+    activityType: string,
+    statsIncrement?: Partial<{
+      applicantCount: number;
+      shortlistedCount: number;
+      interviewedCount: number;
+      offeredCount: number;
+      hiredCount: number;
+    }>,
+  ): void {
+    // Async, non-blocking — errors are logged but never thrown
+    Promise.all([
+      // Append a performance log entry
+      this.prisma.recruiterPerformanceLog.create({
+        data: {
+          recruiterId,
+          companyId,
+          jobId: jobId ?? undefined,
+          activityType,
+          loggedAt: new Date(),
+        },
+      }),
+
+      // Upsert JobStats counters if increment payload provided
+      jobId && statsIncrement
+        ? this.prisma.jobStats.upsert({
+            where: { jobId },
+            create: {
+              jobId,
+              companyId,
+              applicantCount: statsIncrement.applicantCount ?? 0,
+              shortlistedCount: statsIncrement.shortlistedCount ?? 0,
+              interviewedCount: statsIncrement.interviewedCount ?? 0,
+              offeredCount: statsIncrement.offeredCount ?? 0,
+              hiredCount: statsIncrement.hiredCount ?? 0,
+              lastCalculatedAt: new Date(),
+            },
+            update: {
+              applicantCount: { increment: statsIncrement.applicantCount ?? 0 },
+              shortlistedCount: {
+                increment: statsIncrement.shortlistedCount ?? 0,
+              },
+              interviewedCount: {
+                increment: statsIncrement.interviewedCount ?? 0,
+              },
+              offeredCount: { increment: statsIncrement.offeredCount ?? 0 },
+              hiredCount: { increment: statsIncrement.hiredCount ?? 0 },
+              lastCalculatedAt: new Date(),
+            },
+          })
+        : Promise.resolve(),
+    ]).catch((err) =>
+      this.logger.warn(`logActivity failed (non-fatal): ${err?.message}`),
+    );
+  }
 
   async list(ctx: ApplicationScopeContext, jobId?: number) {
     if (isOrgWideScope(ctx.roleKey)) {
@@ -105,6 +171,10 @@ export class ApplicationsService {
       },
     );
 
+    this.logActivity(ctx.userId, ctx.companyId, app.jobId, 'interview_scheduled', {
+      interviewedCount: 1,
+    });
+
     return { id: String(interview.id), status: 'SCHEDULED' };
   }
 
@@ -115,7 +185,7 @@ export class ApplicationsService {
     const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.application.findFirst({
         where: { id: applicationId },
-        select: { id: true, companyId: true },
+        select: { id: true, companyId: true, jobId: true },
       }),
     );
 
@@ -132,6 +202,10 @@ export class ApplicationsService {
       }),
     );
 
+    this.logActivity(ctx.userId, ctx.companyId, app.jobId, 'candidate_shortlisted', {
+      shortlistedCount: 1,
+    });
+
     return { id: String(updated.id), status: updated.status };
   }
 
@@ -142,7 +216,7 @@ export class ApplicationsService {
     const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.application.findFirst({
         where: { id: applicationId },
-        select: { id: true, companyId: true },
+        select: { id: true, companyId: true, jobId: true },
       }),
     );
 
@@ -159,6 +233,10 @@ export class ApplicationsService {
       }),
     );
 
+    this.logActivity(ctx.userId, ctx.companyId, app.jobId, 'offer_sent', {
+      offeredCount: 1,
+    });
+
     return { id: String(updated.id), status: updated.status };
   }
 
@@ -169,7 +247,7 @@ export class ApplicationsService {
     const app = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.application.findFirst({
         where: { id: applicationId },
-        select: { id: true, companyId: true },
+        select: { id: true, companyId: true, jobId: true },
       }),
     );
 
@@ -185,6 +263,10 @@ export class ApplicationsService {
         select: { id: true, status: true },
       }),
     );
+
+    this.logActivity(ctx.userId, ctx.companyId, app.jobId, 'candidate_hired', {
+      hiredCount: 1,
+    });
 
     return { id: String(updated.id), status: updated.status };
   }
@@ -267,35 +349,42 @@ export class ApplicationsService {
     );
     if (!stage) throw new NotFoundException('Pipeline stage not found');
 
-    return this.prisma.runWithOrgContext(ctx.companyId, async (tx) => {
-      // record stage change history
-      await tx.applicationHistory.create({
-        data: {
-          applicationId,
-          fromStageId: app.currentStageId ?? null,
-          toStageId: stageId,
-          changedById: ctx.userId,
-          changedAt: new Date(),
-        },
-      });
+    const result = await this.prisma.runWithOrgContext(
+      ctx.companyId,
+      async (tx) => {
+        // record stage change history
+        await tx.applicationHistory.create({
+          data: {
+            applicationId,
+            fromStageId: app.currentStageId ?? null,
+            toStageId: stageId,
+            changedById: ctx.userId,
+            changedAt: new Date(),
+          },
+        });
 
-      // ensure pipeline row exists for this stage (unique [applicationId, stageId])
-      await tx.pipeline.upsert({
-        where: { applicationId_stageId: { applicationId, stageId } },
-        create: {
-          applicationId,
-          stageId,
-          movedById: ctx.userId,
-          movedAt: new Date(),
-        },
-        update: { movedById: ctx.userId, movedAt: new Date() },
-      });
+        // ensure pipeline row exists for this stage (unique [applicationId, stageId])
+        await tx.pipeline.upsert({
+          where: { applicationId_stageId: { applicationId, stageId } },
+          create: {
+            applicationId,
+            stageId,
+            movedById: ctx.userId,
+            movedAt: new Date(),
+          },
+          update: { movedById: ctx.userId, movedAt: new Date() },
+        });
 
-      return tx.application.update({
-        where: { id: applicationId },
-        data: { currentStageId: stageId },
-        select: applicationListSelect,
-      });
-    });
+        return tx.application.update({
+          where: { id: applicationId },
+          data: { currentStageId: stageId },
+          select: applicationListSelect,
+        });
+      },
+    );
+
+    this.logActivity(ctx.userId, ctx.companyId, app.jobId, 'pipeline_moved');
+
+    return result;
   }
 }
