@@ -1,7 +1,9 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   JobStatus,
@@ -39,6 +41,18 @@ export type JobScopeContext = {
 @Injectable()
 export class JobsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private static readonly publishRequiredFields = [
+    'title',
+    'experience',
+    'employmentType',
+    'workArrangement',
+    'location',
+    'introduction',
+    'responsibilities',
+    'requirements',
+    'salary',
+  ] as const;
 
   /**
    * List jobs. Admin/HM/Viewer/Reviewer: org-wide. Recruiter: own or assigned only.
@@ -230,6 +244,168 @@ export class JobsService {
     );
   }
 
+  /**
+   * Load a job and verify org access + scope-based access.
+   * Reusable across all workflow methods.
+   */
+  private async loadJobWithAccessCheck<
+    S extends Prisma.JobSelect & {
+      id: true;
+      companyId: true;
+      recruiterId: true;
+    },
+  >(jobId: number, ctx: JobScopeContext, select: S) {
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId },
+      select,
+    });
+
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    const typed = job as Prisma.JobGetPayload<{ select: S }> & {
+      companyId: number;
+      recruiterId: number | null;
+    };
+
+    assertOrgAccess(typed.companyId, ctx.companyId);
+
+    if (!isOrgWideScope(ctx.roleKey)) {
+      const hasAssignment = await this.prisma.jobAssignment.findFirst({
+        where: { jobId, recruiterId: ctx.userId, isActive: true },
+      });
+      if (
+        !canAccessJob(
+          typed,
+          ctx.companyId,
+          ctx.userId,
+          ctx.roleKey,
+          !!hasAssignment,
+        )
+      ) {
+        throw new ForbiddenException(
+          'Access denied: you do not own or are not assigned to this job',
+        );
+      }
+    }
+
+    return typed;
+  }
+
+  /**
+   * DRAFT -> PENDING_APPROVAL
+   */
+  async requestApproval(jobId: number, ctx: JobScopeContext) {
+    const job = await this.loadJobWithAccessCheck(jobId, ctx, {
+      ...jobPublishReadSelect,
+    });
+
+    if (job.status !== JobStatus.DRAFT) {
+      throw new BadRequestException(
+        `Cannot request approval for a job that is currently in ${job.status} status.`,
+      );
+    }
+
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.PENDING_APPROVAL,
+          approvalRequestedAt: new Date(),
+          approvalRequestedById: ctx.userId,
+        },
+        select: jobListSelect,
+      }),
+    );
+  }
+
+  /**
+   * PENDING_APPROVAL -> APPROVED
+   */
+  async approve(jobId: number, ctx: JobScopeContext) {
+    const job = await this.loadJobWithAccessCheck(jobId, ctx, {
+      ...jobPublishReadSelect,
+    });
+
+    if (job.status !== JobStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        `Cannot approve a job that is currently in ${job.status} status.`,
+      );
+    }
+
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.APPROVED,
+          approvedAt: new Date(),
+          approvedById: ctx.userId,
+          rejectedAt: null,
+          rejectedById: null,
+          rejectionReason: null,
+        },
+        select: jobListSelect,
+      }),
+    );
+  }
+
+  /**
+   * PENDING_APPROVAL -> DRAFT (with rejection reason)
+   */
+  async reject(jobId: number, ctx: JobScopeContext, rejectionReason: string) {
+    const job = await this.loadJobWithAccessCheck(jobId, ctx, {
+      ...jobPublishReadSelect,
+    });
+
+    if (job.status !== JobStatus.PENDING_APPROVAL) {
+      throw new BadRequestException(
+        `Cannot reject a job that is currently in ${job.status} status.`,
+      );
+    }
+
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.DRAFT,
+          rejectedAt: new Date(),
+          rejectedById: ctx.userId,
+          rejectionReason,
+          approvedAt: null,
+          approvedById: null,
+        },
+        select: jobListSelect,
+      }),
+    );
+  }
+
+  /**
+   * LIVE -> ARCHIVED
+   */
+  async archive(jobId: number, ctx: JobScopeContext) {
+    const job = await this.loadJobWithAccessCheck(jobId, ctx, {
+      ...jobPublishReadSelect,
+    });
+
+    if (job.status !== JobStatus.LIVE) {
+      throw new BadRequestException(
+        `Cannot archive a job that is currently in ${job.status} status.`,
+      );
+    }
+
+    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+      tx.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.ARCHIVED,
+          archivedAt: new Date(),
+        },
+        select: jobListSelect,
+      }),
+    );
+  }
+
   private isJobUniqueConstraintError(
     error: unknown,
   ): error is Prisma.PrismaClientKnownRequestError {
@@ -244,46 +420,53 @@ export class JobsService {
     return (error.meta as { modelName?: string } | undefined)?.modelName === 'Job';
   }
 
-  /**
-   * Publish a job. Recruiter: only if own or assigned; Admin/HM: any job in org.
-   */
-  async publish(jobId: number, ctx: JobScopeContext) {
-    const job = await this.prisma.job.findFirst({
-      where: { id: jobId },
-      select: jobPublishReadSelect,
-    });
-    if (!job) {
-      throw new NotFoundException('Job not found');
-    }
-    assertOrgAccess(job.companyId, ctx.companyId);
+  private validateJobForPublishing(
+    job: Record<(typeof JobsService.publishRequiredFields)[number], unknown>,
+  ) {
+    const errors = JobsService.publishRequiredFields
+      .filter((field) => {
+        const value = job[field];
+        if (value === null || value === undefined) {
+          return true;
+        }
+        return typeof value === 'string' && value.trim() === '';
+      })
+      .map((field) => `${field} is required`);
 
-    if (!isOrgWideScope(ctx.roleKey)) {
-      const hasAssignment = await this.prisma.jobAssignment.findFirst({
-        where: {
-          jobId,
-          recruiterId: ctx.userId,
-          isActive: true,
-        },
-      });
-      if (
-        !canAccessJob(
-          job,
-          ctx.companyId,
-          ctx.userId,
-          ctx.roleKey,
-          !!hasAssignment,
-        )
-      ) {
-        throw new ForbiddenException(
-          'Access denied: you do not own or are not assigned to this job',
-        );
-      }
+    if (errors.length > 0) {
+      throw new UnprocessableEntityException({ errors });
     }
+  }
+
+  /**
+   * Publish a job to LIVE.
+   * - With job:approve permission: DRAFT, PENDING_APPROVAL, or APPROVED -> LIVE
+   * - With only job:publish permission: APPROVED -> LIVE
+   */
+  async publish(jobId: number, ctx: JobScopeContext, hasApprovePermission: boolean) {
+    const job = await this.loadJobWithAccessCheck(jobId, ctx, {
+      ...jobPublishReadSelect,
+    });
+
+    const allowedStatuses: JobStatus[] = hasApprovePermission
+      ? [JobStatus.DRAFT, JobStatus.PENDING_APPROVAL, JobStatus.APPROVED]
+      : [JobStatus.APPROVED];
+
+    if (!allowedStatuses.includes(job.status)) {
+      throw new BadRequestException(
+        `Cannot publish a job that is currently in ${job.status} status.`,
+      );
+    }
+
+    this.validateJobForPublishing(job);
 
     return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.job.update({
         where: { id: jobId },
-        data: { status: JobStatus.LIVE },
+        data: {
+          status: JobStatus.LIVE,
+          publishedAt: new Date(),
+        },
         select: jobListSelect,
       }),
     );
@@ -400,56 +583,6 @@ export class JobsService {
     );
 
     return { deleted: true };
-  }
-
-  /**
-   * Update job status. Recruiter: only if own or assigned; Admin/HM: any job in org.
-   */
-  async updateStatus(
-    jobId: number,
-    ctx: JobScopeContext,
-    status: JobStatus,
-  ) {
-    const job = await this.prisma.job.findFirst({
-      where: { id: jobId },
-      select: { id: true, companyId: true, recruiterId: true },
-    });
-
-    if (!job) {
-      throw new NotFoundException('Job not found');
-    }
-    assertOrgAccess(job.companyId, ctx.companyId);
-
-    if (!isOrgWideScope(ctx.roleKey)) {
-      const hasAssignment = await this.prisma.jobAssignment.findFirst({
-        where: {
-          jobId,
-          recruiterId: ctx.userId,
-          isActive: true,
-        },
-      });
-      if (
-        !canAccessJob(
-          job,
-          ctx.companyId,
-          ctx.userId,
-          ctx.roleKey,
-          !!hasAssignment,
-        )
-      ) {
-        throw new ForbiddenException(
-          'Access denied: you do not own or are not assigned to this job',
-        );
-      }
-    }
-
-    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
-      tx.job.update({
-        where: { id: jobId },
-        data: { status },
-        select: jobListSelect,
-      }),
-    );
   }
 
   /**
