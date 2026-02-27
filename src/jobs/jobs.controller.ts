@@ -24,7 +24,7 @@ import { RequirePermissionGuard } from '../rbac/require-permission.guard';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
-import { UpdateStatusDto } from './dto/update-status.dto';
+import { RejectJobDto } from './dto/reject-job.dto';
 import { SaveValuesDto } from './dto/save-values.dto';
 import { SaveBenchmarkDto } from './dto/save-benchmark.dto';
 
@@ -103,7 +103,7 @@ export class JobsController {
 
   @Post('publish')
   @RequirePermission('job:publish')
-  @ApiOperation({ summary: 'Publish job (Recruiter: only if own or assigned)' })
+  @ApiOperation({ summary: 'Publish job (APPROVED->LIVE; with job:approve also DRAFT/PENDING_APPROVAL->LIVE)' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -121,15 +121,19 @@ export class JobsController {
   @ApiResponse({ status: 404, description: 'Job not found' })
   publishByBody(
     @Body('jobId', ParseIntPipe) jobId: number,
-    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string; permissions: string[] },
   ) {
-    return this.jobs.publish(jobId, this.toScopeContext(auth));
+    return this.jobs.publish(
+      jobId,
+      this.toScopeContext(auth),
+      auth.permissions.includes('job:approve'),
+    );
   }
 
   @Post(':id/publish')
   @RequirePermission('job:publish')
   @ApiOperation({
-    summary: 'Publish job by path (Recruiter: only if own or assigned)',
+    summary: 'Publish job by path (APPROVED->LIVE; with job:approve also DRAFT/PENDING_APPROVAL->LIVE)',
   })
   @ApiResponse({ status: 200, description: 'Job published' })
   @ApiResponse({ status: 401, description: 'Not authenticated' })
@@ -141,9 +145,74 @@ export class JobsController {
   @ApiResponse({ status: 404, description: 'Job not found' })
   publishById(
     @Param('id', ParseIntPipe) id: number,
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string; permissions: string[] },
+  ) {
+    return this.jobs.publish(
+      id,
+      this.toScopeContext(auth),
+      auth.permissions.includes('job:approve'),
+    );
+  }
+
+  @Post(':id/request-approval')
+  @RequirePermission('job:request_approval')
+  @ApiOperation({ summary: 'Request approval for a job (DRAFT -> PENDING_APPROVAL)' })
+  @ApiResponse({ status: 200, description: 'Approval requested' })
+  @ApiResponse({ status: 400, description: 'Invalid status transition' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  requestApproval(
+    @Param('id', ParseIntPipe) id: number,
     @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
   ) {
-    return this.jobs.publish(id, this.toScopeContext(auth));
+    return this.jobs.requestApproval(id, this.toScopeContext(auth));
+  }
+
+  @Post(':id/approve')
+  @RequirePermission('job:approve')
+  @ApiOperation({ summary: 'Approve a job (PENDING_APPROVAL -> APPROVED)' })
+  @ApiResponse({ status: 200, description: 'Job approved' })
+  @ApiResponse({ status: 400, description: 'Invalid status transition' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  approve(
+    @Param('id', ParseIntPipe) id: number,
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
+  ) {
+    return this.jobs.approve(id, this.toScopeContext(auth));
+  }
+
+  @Post(':id/reject')
+  @RequirePermission('job:approve')
+  @ApiOperation({ summary: 'Reject a job (PENDING_APPROVAL -> DRAFT)' })
+  @ApiResponse({ status: 200, description: 'Job rejected' })
+  @ApiResponse({ status: 400, description: 'Invalid status transition or missing reason' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  reject(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RejectJobDto,
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
+  ) {
+    return this.jobs.reject(id, this.toScopeContext(auth), dto.rejectionReason);
+  }
+
+  @Patch(':id/archive')
+  @RequirePermission('job:archive')
+  @ApiOperation({ summary: 'Archive a job (LIVE -> ARCHIVED)' })
+  @ApiResponse({ status: 200, description: 'Job archived' })
+  @ApiResponse({ status: 400, description: 'Invalid status transition' })
+  @ApiResponse({ status: 401, description: 'Not authenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Job not found' })
+  archive(
+    @Param('id', ParseIntPipe) id: number,
+    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
+  ) {
+    return this.jobs.archive(id, this.toScopeContext(auth));
   }
 
   @Patch(':id')
@@ -177,23 +246,6 @@ export class JobsController {
     @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
   ) {
     return this.jobs.delete(id, this.toScopeContext(auth));
-  }
-
-  @Patch(':id/status')
-  @RequirePermission('job:update')
-  @ApiOperation({
-    summary: 'Update job status (Recruiter: only if own or assigned)',
-  })
-  @ApiResponse({ status: 200, description: 'Job status updated' })
-  @ApiResponse({ status: 401, description: 'Not authenticated' })
-  @ApiResponse({ status: 403, description: 'Forbidden' })
-  @ApiResponse({ status: 404, description: 'Job not found' })
-  updateStatus(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateStatusDto,
-    @AuthCtx() auth: { currentOrgId: string; userId: string; roleKey: string },
-  ) {
-    return this.jobs.updateStatus(id, this.toScopeContext(auth), dto.status);
   }
 
   @Post(':id/values')

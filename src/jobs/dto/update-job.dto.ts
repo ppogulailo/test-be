@@ -10,7 +10,6 @@ import {
   EmploymentType,
   ExperienceLevel,
   WorkArrangement,
-  JobStatus,
   CompanySize,
   RequirementsLevel,
 } from '@prisma/client';
@@ -72,14 +71,6 @@ export class UpdateJobDto {
   @IsOptional()
   @IsString()
   location?: string;
-
-  @ApiPropertyOptional({ enum: JobStatus })
-  @IsOptional()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim().toUpperCase() : value,
-  )
-  @IsEnum(JobStatus)
-  status?: JobStatus;
 
   @ApiPropertyOptional({ enum: JobLanguageEnum })
   @IsOptional()

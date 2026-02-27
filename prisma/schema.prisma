@@ -164,11 +164,10 @@ enum JobLanguage {
 
 enum JobStatus {
   DRAFT
-  LIVE
-  READY
   PENDING_APPROVAL
+  APPROVED
+  LIVE
   ARCHIVED
-  HIDDEN
 }
 
 enum JobType {

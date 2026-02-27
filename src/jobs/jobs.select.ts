@@ -92,6 +92,16 @@ export const jobPublishReadSelect = {
   id: true,
   companyId: true,
   recruiterId: true,
+  status: true,
+  title: true,
+  experience: true,
+  employmentType: true,
+  workArrangement: true,
+  location: true,
+  introduction: true,
+  responsibilities: true,
+  requirements: true,
+  salary: true,
 } satisfies Prisma.JobSelect;
 
 export const jobPublishResultSelect = {

@@ -33,6 +33,7 @@ const PERMISSIONS: PermissionSeed[] = [
   { name: 'job:publish' },
   { name: 'job:approve' },
   { name: 'job:request_approval' },
+  { name: 'job:archive' },
   { name: 'job:assign' },
   { name: 'candidate:read' },
   { name: 'candidate:search' },
@@ -56,6 +57,7 @@ const ROLE_PERMISSION_MATRIX: Record<AccessRole, string[]> = {
     'job:update',
     'job:publish',
     'job:request_approval',
+    'job:archive',
     'candidate:read',
     'candidate:search',
     'candidate:compare',
@@ -68,6 +70,7 @@ const ROLE_PERMISSION_MATRIX: Record<AccessRole, string[]> = {
   [AccessRole.HM]: [
     'job:read',
     'job:approve',
+    'job:archive',
     'job:assign',
     'candidate:read',
     'candidate:search',
