@@ -1118,6 +1118,7 @@ model Company {
   internalFeedbackPostInterview InternalFeedbackPostInterview[] @relation("InternalFeedbackCompany")
   internalFeedback6MonthClient  InternalFeedback6MonthClient[]  @relation("Internal6MonthCompany")
   recruiterActivityMetrics     RecruiterActivityMetrics[]       @relation("RecruiterActivityMetricsCompany")
+  reportTemplates              ReportTemplate[]                 @relation("ReportTemplateCompany")
 
   // Organization context (server-side selected org; never trusted from client)
   currentOrgUsers UserCurrentOrg[]
@@ -2396,4 +2397,23 @@ model RecruiterActivityMetrics {
   @@index([recruiterId, periodStart])
   @@index([companyId, periodStart])
   @@map("recruiter_activity_metrics")
+}
+// Report Template – catalogue of available export/analytics reports per organisation
+model ReportTemplate {
+  id          Int      @id @default(autoincrement())
+  company     Company  @relation("ReportTemplateCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   Int
+
+  title       String
+  description String   @db.Text
+  tag         String   @default("Live")
+  exportType  String   // "applications" | "pipeline"
+  format      String   // "csv" | "json"
+  generatedAt DateTime @default(now())
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("report_templates")
 }

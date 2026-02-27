@@ -230,6 +230,20 @@ export class JobsService {
     );
   }
 
+  private isJobUniqueConstraintError(
+    error: unknown,
+  ): error is Prisma.PrismaClientKnownRequestError {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+
+    if (error.code !== 'P2002') {
+      return false;
+    }
+
+    return (error.meta as { modelName?: string } | undefined)?.modelName === 'Job';
+  }
+
   /**
    * Publish a job. Recruiter: only if own or assigned; Admin/HM: any job in org.
    */
