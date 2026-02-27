@@ -147,7 +147,7 @@ export class JobsController {
   }
 
   @Patch(':id')
-  @RequirePermission('job:edit')
+  @RequirePermission('job:update')
   @ApiOperation({
     summary: 'Update job (Recruiter: only if own or assigned)',
   })
@@ -180,7 +180,7 @@ export class JobsController {
   }
 
   @Patch(':id/status')
-  @RequirePermission('job:edit')
+  @RequirePermission('job:update')
   @ApiOperation({
     summary: 'Update job status (Recruiter: only if own or assigned)',
   })
@@ -197,7 +197,7 @@ export class JobsController {
   }
 
   @Post(':id/values')
-  @RequirePermission('job:edit')
+  @RequirePermission('job:update')
   @ApiOperation({
     summary: 'Save job values (Recruiter: only if own or assigned)',
   })
@@ -214,7 +214,7 @@ export class JobsController {
   }
 
   @Post(':id/benchmark')
-  @RequirePermission('job:edit')
+  @RequirePermission('job:update')
   @ApiOperation({
     summary: 'Save job benchmark (Recruiter: only if own or assigned)',
   })

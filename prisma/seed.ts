@@ -156,7 +156,36 @@ async function main() {
       }
     }
 
-    // 3) Organizations (Companies)
+    // 3) Canonical Core Values (global, shared across all orgs)
+    const CORE_VALUES = [
+      { name: 'Mission and Vision Alignment',        category: 'Mission'     },
+      { name: 'Growth and Development Opportunities', category: 'Growth'      },
+      { name: 'Employee Experience and Satisfaction', category: 'Experience'  },
+      { name: 'Predicting Job Performance',           category: 'Performance' },
+      { name: 'Predicting Cultural Fit',              category: 'Culture'     },
+      { name: 'Hard Skills',                          category: 'Performance' },
+      // Benchmark step core value options
+      { name: 'initiative',     category: 'Benchmark' },
+      { name: 'accountability', category: 'Benchmark' },
+      { name: 'ethical',        category: 'Benchmark' },
+      { name: 'collaboration',  category: 'Benchmark' },
+      { name: 'innovation',     category: 'Benchmark' },
+      { name: 'leadership',     category: 'Benchmark' },
+      { name: 'communication',  category: 'Benchmark' },
+      { name: 'adaptability',   category: 'Benchmark' },
+      { name: 'creativity',     category: 'Benchmark' },
+      { name: 'problem-solving', category: 'Benchmark' },
+    ];
+
+    for (const cv of CORE_VALUES) {
+      await tx.coreValue.upsert({
+        where: { name: cv.name },
+        create: { name: cv.name, category: cv.category, isActive: true },
+        update: { category: cv.category, isActive: true },
+      });
+    }
+
+    // 4) Organizations (Companies)
     const orgA = await getOrCreateCompany(tx, 'Org A');
     const orgB = await getOrCreateCompany(tx, 'Org B');
 
@@ -205,7 +234,7 @@ async function main() {
       });
     }
 
-    // 4) Dev user (password 8+ chars for frontend validation; signin with DEV_USER_PASSWORD)
+    // 5) Dev user (password 8+ chars for frontend validation; signin with DEV_USER_PASSWORD)
     const devPasswordHash = await bcrypt.hash(DEV_USER_PASSWORD, SALT_ROUNDS);
     const devUser = await tx.user.upsert({
       where: { email: 'user1@example.com' },
@@ -292,7 +321,7 @@ async function main() {
       },
     });
 
-    // 5) Memberships
+    // 6) Memberships
     const membershipA = await tx.organizationMembership.upsert({
       where: { userId_companyId: { userId: devUser.id, companyId: orgA.id } },
       create: {
@@ -368,7 +397,7 @@ async function main() {
       update: { isActive: true, leftAt: null },
     });
 
-    // 6) Role assignments (org-level: departmentId null)
+    // 7) Role assignments (org-level: departmentId null)
     for (const [membership, role] of [
       [membershipA, AccessRole.ORG_ADMIN],
       [membershipB, AccessRole.VIEWER],
@@ -410,7 +439,7 @@ async function main() {
       }
     }
 
-    // 7) Initial current org selection
+    // 8) Initial current org selection
     await tx.userCurrentOrg.upsert({
       where: { userId: devUser.id },
       create: {
@@ -716,10 +745,10 @@ async function main() {
         experience: 'SENIOR',
         employmentType: 'LONG_TERM',
         workArrangement: 'REMOTE',
-        responsibilities: ['Lead development', 'Code review', 'Mentoring'],
-        requirements: ['5+ years experience', 'React', 'Node.js'],
+        responsibilities: 'Lead development\\nCode review\\nMentoring',
+        requirements: 'ADVANCED',
         niceToHave: ['TypeScript', 'GraphQL'],
-        perks: ['Health insurance', 'Remote work'],
+        perks: 'Health insurance\\nRemote work',
         whoYouAre: ['Team player', 'Self-motivated'],
         education: "Bachelor's in Computer Science",
         location: 'Remote - USA',
@@ -747,10 +776,10 @@ async function main() {
         experience: 'MID',
         employmentType: 'LONG_TERM',
         workArrangement: 'REMOTE',
-        responsibilities: ['Build UI components', 'Implement designs', 'Optimize performance'],
-        requirements: ['3+ years React', 'TypeScript', 'CSS/Tailwind'],
+        responsibilities: 'Build UI components\\nImplement designs\\nOptimize performance',
+        requirements: 'INTERMEDIATE',
         niceToHave: ['Next.js', 'Design system experience'],
-        perks: ['Remote work', 'Learning budget'],
+        perks: 'Remote work\\nLearning budget',
         whoYouAre: ['Detail-oriented', 'UX-focused'],
         education: "Bachelor's in Computer Science or equivalent",
         location: 'Remote - USA',
@@ -778,10 +807,10 @@ async function main() {
         experience: 'MID',
         employmentType: 'LONG_TERM',
         workArrangement: 'HYBRID',
-        responsibilities: ['Product strategy', 'Roadmap planning', 'Stakeholder management'],
-        requirements: ['3+ years PM experience', 'Agile/Scrum'],
+        responsibilities: 'Product strategy\\nRoadmap planning\\nStakeholder management',
+        requirements: 'INTERMEDIATE',
         niceToHave: ['Technical background', 'B2B SaaS'],
-        perks: ['Equity', 'Flexible hours'],
+        perks: 'Equity\\nFlexible hours',
         whoYouAre: ['Data-driven', 'Customer-focused'],
         education: "Bachelor's degree",
         location: 'New York, USA',
@@ -799,6 +828,11 @@ async function main() {
         recruiterId: recruiterOrgB.id,
       },
     });
+
+    // Reset Job id sequence so next create() doesn't reuse 1 (seed uses explicit id: 1,2,3)
+    await tx.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"Job"', 'id'), (SELECT COALESCE(MAX(id), 1) FROM "Job"))`,
+    );
 
     // Job Assignment: Job 1 → Recruiter1 (Org A)
     const existingAssignment1 = await tx.jobAssignment.findFirst({

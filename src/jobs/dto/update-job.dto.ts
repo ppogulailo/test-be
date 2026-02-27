@@ -1,6 +1,27 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsArray, IsEnum, IsOptional, IsString, IsInt } from 'class-validator';
-import { EmploymentType, ExperienceLevel, WorkArrangement, JobStatus } from '@prisma/client';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsInt,
+  IsDateString,
+} from 'class-validator';
+import {
+  EmploymentType,
+  ExperienceLevel,
+  WorkArrangement,
+  JobStatus,
+  CompanySize,
+  RequirementsLevel,
+} from '@prisma/client';
+import { Type, Transform } from 'class-transformer';
+import { JobLanguageEnum } from './create-job.dto';
+
+function toEnumUppercase() {
+  return Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  );
+}
 
 export class UpdateJobDto {
   @ApiPropertyOptional()
@@ -10,54 +31,37 @@ export class UpdateJobDto {
 
   @ApiPropertyOptional({ enum: ExperienceLevel })
   @IsOptional()
+  @toEnumUppercase()
   @IsEnum(ExperienceLevel)
   experience?: ExperienceLevel;
 
   @ApiPropertyOptional({ enum: EmploymentType })
   @IsOptional()
+  @toEnumUppercase()
   @IsEnum(EmploymentType)
   employmentType?: EmploymentType;
 
   @ApiPropertyOptional({ enum: WorkArrangement })
   @IsOptional()
+  @toEnumUppercase()
   @IsEnum(WorkArrangement)
   workArrangement?: WorkArrangement;
 
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  responsibilities?: string[];
+  @IsString()
+  responsibilities?: string;
 
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional({ enum: RequirementsLevel })
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  requirements?: string[];
+  @toEnumUppercase()
+  @IsEnum(RequirementsLevel)
+  requirements?: RequirementsLevel;
 
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  niceToHave?: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  perks?: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  whoYouAre?: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  tags?: string[];
+  @IsString()
+  perks?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -71,11 +75,73 @@ export class UpdateJobDto {
 
   @ApiPropertyOptional({ enum: JobStatus })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsEnum(JobStatus)
   status?: JobStatus;
+
+  @ApiPropertyOptional({ enum: JobLanguageEnum })
+  @IsOptional()
+  @IsEnum(JobLanguageEnum)
+  language?: JobLanguageEnum;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  introduction?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  salary?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsInt()
+  hoursPerWeek?: number;
+
+  @ApiPropertyOptional({
+    enum: CompanySize,
+    description: 'Size of the company: SIZE_1_10 (1-10), SIZE_11_50 (11-50), SIZE_51_200 (51-200), SIZE_201_500 (201-500), SIZE_500_PLUS (500+)',
+  })
+  @IsOptional()
+  @toEnumUppercase()
+  @IsEnum(CompanySize)
+  companySize?: CompanySize;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  videoUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  applicationClosingDate?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  jobNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  recruiterId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
   assignedRecruiterId?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  departmentId?: number;
 }
+
+
