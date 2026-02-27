@@ -28,7 +28,14 @@ datasource db {
 
 // ===== ENUMS =====
 
+enum RequirementsLevel {
+  BASIC
+  INTERMEDIATE
+  ADVANCED
+}
+
 enum NotificationType {
+
   RECRUITER_NEW_APPLICATION
   REVIEWER_REQUEST_FEEDBACK
   INTERVIEW_SCHEDULED
@@ -95,14 +102,11 @@ enum CandidateValuesMatchType {
 }
 
 enum CompanySize {
-  SIZE_1_50         @map("1-50")
-  SIZE_51_100       @map("51-100")
-  SIZE_101_500      @map("101-500")
-  SIZE_501_1000     @map("501-1000")
-  SIZE_1001_5000    @map("1001-5000")
-  SIZE_5001_10000   @map("5001-10000")
-  SIZE_10001_50000  @map("10001-50000")
-  SIZE_50001_100000 @map("50001-100000")
+  SIZE_1_10     @map("1-10")   // 1-10 робочих
+  SIZE_11_50    @map("11-50")
+  SIZE_51_200   @map("51-200")
+  SIZE_201_500  @map("201-500")
+  SIZE_500_PLUS @map("500+")
 }
 
 enum CompanyType {
@@ -161,12 +165,10 @@ enum JobLanguage {
 enum JobStatus {
   DRAFT
   LIVE
-  APPROVED
-  REJECTED
-  APPROVAL_PENDING
+  READY
+  PENDING_APPROVAL
   ARCHIVED
   HIDDEN
-  EXPIRED
 }
 
 enum JobType {
@@ -1050,7 +1052,7 @@ model Company {
   logoUrl      String?
   description  String?      @db.Text
   website      String?
-  size         CompanySize? @default(SIZE_1_50)
+  size         CompanySize? @default(SIZE_1_10)
   type         CompanyType? @default(STARTUP)
 
   // Company configuration
@@ -1386,10 +1388,10 @@ model Job {
   experience             ExperienceLevel
   employmentType         EmploymentType
   workArrangement        WorkArrangement
-  responsibilities       String[]
-  requirements           String[]
+  responsibilities       String?                 @db.Text
+  requirements           RequirementsLevel?
   niceToHave             String[]
-  perks                  String[]
+  perks                  String?                 @db.Text
   whoYouAre              String[]
   education              String?
   location               String?
@@ -1427,7 +1429,7 @@ model Job {
 
   introduction String?             @db.Text // was String?
   salary       String? // legacy; prefer min/max + currency + period
-  languages    JobLanguage[] // was JobLanguage?
+  language     JobLanguage?
   publishedAt  DateTime?
   archivedAt   DateTime?
   expiredAt    DateTime?
