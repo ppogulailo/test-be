@@ -25,6 +25,7 @@ export const jobGetOneSelect = {
   recruiterId: true,
   createdAt: true,
   updatedAt: true,
+  rejectionReason: true,
   // Role overview scalar fields
   departmentId: true,
   location: true,
