@@ -13,17 +13,29 @@ export type CandidateScopeContext = {
 export class CandidatesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private visibilityWhere = {
+    OR: [
+      { profileVisibilityPreference: null },
+      { profileVisibilityPreference: { showProfileToRecruiters: true } },
+    ],
+  };
+
   async list(ctx: CandidateScopeContext, jobId?: number) {
     if (isOrgWideScope(ctx.roleKey)) {
       return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
         tx.candidateProfile.findMany({
           where: {
-            applications: {
-              some: {
-                companyId: ctx.companyId,
-                ...(jobId !== undefined ? { jobId } : {}),
+            AND: [
+              {
+                applications: {
+                  some: {
+                    companyId: ctx.companyId,
+                    ...(jobId !== undefined ? { jobId } : {}),
+                  },
+                },
               },
-            },
+              this.visibilityWhere,
+            ],
           },
           select: candidateListSelect,
           orderBy: { updatedAt: 'desc' },
@@ -40,19 +52,23 @@ export class CandidatesService {
     if (ids.length === 0) return [];
 
     if (jobId !== undefined && !ids.includes(jobId)) {
-      // recruiter cannot list candidates for a job they don't own/aren't assigned
       return [];
     }
 
     return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
       tx.candidateProfile.findMany({
         where: {
-          applications: {
-            some: {
-              companyId: ctx.companyId,
-              jobId: jobId !== undefined ? jobId : { in: ids },
+          AND: [
+            {
+              applications: {
+                some: {
+                  companyId: ctx.companyId,
+                  jobId: jobId !== undefined ? jobId : { in: ids },
+                },
+              },
             },
-          },
+            this.visibilityWhere,
+          ],
         },
         select: candidateListSelect,
         orderBy: { updatedAt: 'desc' },
@@ -61,47 +77,61 @@ export class CandidatesService {
   }
 
   async getOne(candidateProfileId: number, ctx: CandidateScopeContext) {
-    if (isOrgWideScope(ctx.roleKey)) {
-      const candidate = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+    const selectWithVisibility = {
+      ...candidateGetOneSelect,
+      profileVisibilityPreference: {
+        select: { hideContactDetails: true },
+      },
+      contactInfo: { select: { email: true } },
+      user: { select: { email: true } },
+    };
+
+    const findOne = async (where: object) =>
+      this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
         tx.candidateProfile.findFirst({
-          where: {
-            id: candidateProfileId,
-            applications: { some: { companyId: ctx.companyId } },
-          },
-          select: candidateGetOneSelect,
+          where: { AND: [where, this.visibilityWhere] },
+          select: selectWithVisibility,
         }),
       );
-      if (!candidate) throw new NotFoundException('Candidate not found');
-      return candidate;
-    }
 
-    const jobWhere = jobWhereForScope(ctx.companyId, ctx.userId, ctx.roleKey);
-    const visibleJobIds = await this.prisma.job.findMany({
-      where: jobWhere,
-      select: { id: true },
-    });
-    const ids = visibleJobIds.map((j) => j.id);
-    if (ids.length === 0) {
-      throw new ForbiddenException('Access denied: no visible jobs');
-    }
+    let candidate: Awaited<ReturnType<typeof findOne>>;
+    if (isOrgWideScope(ctx.roleKey)) {
+      candidate = await findOne({
+        id: candidateProfileId,
+        applications: { some: { companyId: ctx.companyId } },
+      });
+    } else {
+      const jobWhere = jobWhereForScope(ctx.companyId, ctx.userId, ctx.roleKey);
+      const visibleJobIds = await this.prisma.job.findMany({
+        where: jobWhere,
+        select: { id: true },
+      });
+      const ids = visibleJobIds.map((j) => j.id);
+      if (ids.length === 0) throw new ForbiddenException('Access denied: no visible jobs');
 
-    const candidate = await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
-      tx.candidateProfile.findFirst({
-        where: {
-          id: candidateProfileId,
-          applications: {
-            some: { companyId: ctx.companyId, jobId: { in: ids } },
-          },
+      candidate = await findOne({
+        id: candidateProfileId,
+        applications: {
+          some: { companyId: ctx.companyId, jobId: { in: ids } },
         },
-        select: candidateGetOneSelect,
-      }),
-    );
-    if (!candidate) {
-      throw new ForbiddenException(
-        'Access denied: candidate is not tied to your jobs',
-      );
+      });
     }
-    return candidate;
+
+    if (!candidate) throw new NotFoundException('Candidate not found');
+
+    const c = candidate as typeof candidate & {
+      profileVisibilityPreference?: { hideContactDetails?: boolean } | null;
+      contactInfo?: { email?: string } | null;
+      user?: { email?: string } | null;
+    };
+    const hideContact = c.profileVisibilityPreference?.hideContactDetails ?? false;
+    const { profileVisibilityPreference, contactInfo, user, ...rest } = c;
+    const email = contactInfo?.email ?? user?.email;
+    return {
+      ...rest,
+      email: hideContact ? undefined : email,
+      phone: hideContact ? undefined : rest.phone,
+    };
   }
 }
 

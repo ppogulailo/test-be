@@ -325,24 +325,43 @@ export class CandidatePortalService {
             preferredLanguage: true,
           },
         },
+        candidateProfile: {
+          select: {
+            firstName: true,
+            lastName: true,
+            jobTitle: true,
+            phone: true,
+            profilePicture: true,
+          },
+        },
       },
     });
     if (!user) throw new NotFoundException('User not found');
 
+    // Prefer CandidateProfile for candidates, fallback to Profile
+    const cp = user.candidateProfile;
+    const prof = user.profile;
     const name =
-      [user.profile?.firstName, user.profile?.lastName]
-        .filter(Boolean)
-        .join(' ') || user.email;
+      (cp
+        ? [cp.firstName, cp.lastName].filter(Boolean).join(' ')
+        : prof
+          ? [prof.firstName, prof.lastName].filter(Boolean).join(' ')
+          : null) || user.email;
+
+    const image = cp?.profilePicture ?? prof?.profilePicture ?? null;
+    const languagePreference = prof?.preferredLanguage ?? null;
+    const jobTitle = cp?.jobTitle ?? prof?.jobTitle ?? null;
+    const phoneNumber = cp?.phone ?? prof?.phone ?? null;
 
     return {
       id: String(user.id),
       name,
       email: user.email,
       role: user.type,
-      image: user.profile?.profilePicture ?? null,
-      languagePreference: user.profile?.preferredLanguage ?? null,
-      jobTitle: user.profile?.jobTitle ?? null,
-      phoneNumber: user.profile?.phone ?? null,
+      image,
+      languagePreference,
+      jobTitle,
+      phoneNumber,
     };
   }
 
