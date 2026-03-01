@@ -46,4 +46,23 @@ export class PrismaService
       return fn(tx);
     });
   }
+
+  /**
+   * Run a block of Prisma work in a transaction with candidate RLS context set.
+   * Sets app.current_candidate_id for the session so candidate-facing RLS policies apply.
+   * Use for all candidate-portal reads that need to access candidate-owned data.
+   */
+  async runWithCandidateContext<T>(
+    candidateProfileId: number | string,
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    const profileIdStr = String(candidateProfileId);
+    return this.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        "SELECT set_config('app.current_candidate_id', $1, true)",
+        profileIdStr,
+      );
+      return fn(tx);
+    });
+  }
 }

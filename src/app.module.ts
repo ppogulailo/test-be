@@ -11,6 +11,7 @@ import { CandidatesModule } from './candidates/candidates.module';
 import { DevModule } from './dev/dev.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
+import { CandidatePortalModule } from './candidate-portal/candidate-portal.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { ReportsModule } from './reports/reports.module';
     CandidatesModule,
     DashboardModule,
     ReportsModule,
+    CandidatePortalModule,
     DevModule, // RBAC smoke testing
   ],
 })
