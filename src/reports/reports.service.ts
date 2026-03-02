@@ -60,7 +60,8 @@ export class ReportsService {
       });
       const jobIds = scopedJobs.map((j) => j.id);
 
-      if (jobIds.length === 0) return { rows: [], format: query.format ?? 'json' };
+      if (jobIds.length === 0)
+        return { rows: [], format: query.format ?? 'json' };
 
       const applications = await tx.application.findMany({
         where: {
@@ -85,7 +86,11 @@ export class ReportsService {
           offerSentAt: true,
           offerAcceptedAt: true,
           candidateProfile: {
-            select: { firstName: true, lastName: true, user: { select: { email: true } } },
+            select: {
+              firstName: true,
+              lastName: true,
+              user: { select: { email: true } },
+            },
           },
           job: { select: { title: true } },
           currentStage: { select: { name: true } },
@@ -143,7 +148,8 @@ export class ReportsService {
       });
       const jobIds = scopedJobs.map((j) => j.id);
 
-      if (jobIds.length === 0) return { rows: [], format: query.format ?? 'json' };
+      if (jobIds.length === 0)
+        return { rows: [], format: query.format ?? 'json' };
 
       const histories = await tx.applicationHistory.findMany({
         where: {
@@ -311,7 +317,9 @@ export class ReportsService {
 
       // Application history for time-in-stage calc
       const histories = await tx.applicationHistory.findMany({
-        where: { application: { companyId: ctx.companyId, jobId: { in: jobIds } } },
+        where: {
+          application: { companyId: ctx.companyId, jobId: { in: jobIds } },
+        },
         select: {
           applicationId: true,
           changedAt: true,
@@ -402,7 +410,9 @@ export class ReportsService {
         offered: s.offeredCount,
         hired: s.hiredCount,
         conversionRate:
-          s.applicantCount > 0 ? `${pct(s.hiredCount, s.applicantCount)}%` : '0%',
+          s.applicantCount > 0
+            ? `${pct(s.hiredCount, s.applicantCount)}%`
+            : '0%',
       }));
 
       return {

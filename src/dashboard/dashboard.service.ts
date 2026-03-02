@@ -95,6 +95,8 @@ export class DashboardService {
           status: true,
           application: {
             select: {
+              id: true,
+              jobId: true,
               candidateProfile: {
                 select: { firstName: true, lastName: true },
               },
@@ -164,6 +166,8 @@ export class DashboardService {
         ? `${i.application.candidateProfile.firstName} ${i.application.candidateProfile.lastName}`
         : 'Unknown',
       jobTitle: i.application.job.title,
+      applicationId: i.application.id,
+      jobId: i.application.jobId,
     }));
 
     // Performance counters from log entries
@@ -199,6 +203,195 @@ export class DashboardService {
           : 0,
     }));
 
+    // Month-over-month trends
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+    const [thisMonthApps, lastMonthApps, thisWeekInterviews, lastWeekInterviews, hiredApps, jobApprovalCount, feedbackPendingCount] =
+      await Promise.all([
+        tx.application.count({
+          where: {
+            companyId: ctx.companyId,
+            jobId: { in: allJobIds },
+            submittedAt: { gte: thisMonthStart },
+          },
+        }),
+        tx.application.count({
+          where: {
+            companyId: ctx.companyId,
+            jobId: { in: allJobIds },
+            submittedAt: { gte: lastMonthStart, lt: thisMonthStart },
+          },
+        }),
+        tx.interview.count({
+          where: {
+            application: {
+              companyId: ctx.companyId,
+              jobId: { in: allJobIds },
+            },
+            scheduledAt: { gte: oneWeekAgo, lte: now },
+            status: { not: 'CANCELED' },
+          },
+        }),
+        tx.interview.count({
+          where: {
+            application: {
+              companyId: ctx.companyId,
+              jobId: { in: allJobIds },
+            },
+            scheduledAt: { gte: twoWeeksAgo, lt: oneWeekAgo },
+            status: { not: 'CANCELED' },
+          },
+        }),
+        tx.application.findMany({
+          where: {
+            companyId: ctx.companyId,
+            jobId: { in: allJobIds },
+            status: 'HIRED',
+            hiredAt: { not: null },
+          },
+          select: { submittedAt: true, hiredAt: true },
+        }),
+        tx.job.count({
+          where: {
+            ...jobWhere,
+            approvalRequestedAt: { not: null },
+            approvedAt: null,
+            rejectedAt: null,
+          },
+        }),
+        tx.feedbackTask.count({
+          where: {
+            companyId: ctx.companyId,
+            moment: 'T0_POST_INTERVIEW',
+            status: 'PENDING',
+            jobId: { in: allJobIds },
+          },
+        }),
+      ]);
+
+    const timeToHireDays =
+      hiredApps.length > 0
+        ? Math.round(
+            hiredApps.reduce((sum, a) => {
+              const sub = a.submittedAt?.getTime() ?? 0;
+              const hired = (a.hiredAt as Date)?.getTime() ?? 0;
+              return sum + (hired && sub ? (hired - sub) / (1000 * 60 * 60 * 24) : 0);
+            }, 0) / hiredApps.length,
+          )
+        : 0;
+
+    const offerApprovalPending = stageBreakdown['OFFERED'] ?? 0;
+
+    const trend = (
+      current: number,
+      previous: number,
+    ): { direction: 'up' | 'down' | 'same'; diff: number; text: string } => {
+      const diff = current - previous;
+      if (diff > 0) return { direction: 'up', diff, text: `${diff} more than last month` };
+      if (diff < 0) return { direction: 'down', diff: -diff, text: `${-diff} fewer than last month` };
+      return { direction: 'same', diff: 0, text: 'Same as last month' };
+    };
+
+    const totalApplicantsTrend = trend(totalApplicants, lastMonthApps);
+    const activeJobsTrend = { direction: 'same' as const, diff: 0, text: 'Same as last month' };
+    const interviewsTrend = trend(thisWeekInterviews, lastWeekInterviews);
+
+    // Hiring insights time series (last 30 days)
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const [appSubmissions, histories, hiredWithDate] = await Promise.all([
+      tx.application.findMany({
+        where: {
+          companyId: ctx.companyId,
+          jobId: { in: allJobIds },
+          submittedAt: { lte: now },
+        },
+        select: { id: true, submittedAt: true },
+      }),
+      tx.applicationHistory.findMany({
+        where: {
+          application: {
+            companyId: ctx.companyId,
+            jobId: { in: allJobIds },
+          },
+          changedAt: { gte: thirtyDaysAgo },
+          toStageId: { not: null },
+        },
+        select: {
+          applicationId: true,
+          changedAt: true,
+          toStage: { select: { type: true } },
+        },
+      }),
+      tx.application.findMany({
+        where: {
+          companyId: ctx.companyId,
+          jobId: { in: allJobIds },
+          status: 'HIRED',
+          hiredAt: { not: null },
+        },
+        select: { id: true, hiredAt: true },
+      }),
+    ]);
+
+    const historyRows = histories
+      .filter((h) => h.toStage?.type)
+      .map((h) => ({
+        applicationId: h.applicationId,
+        changedAt: h.changedAt,
+        type: h.toStage!.type,
+      }));
+
+    const hiringInsightsTimeSeries: Array<{
+      date: string;
+      applicationToInterviewRate: number;
+      offerAcceptanceRate: number;
+      rejectionRate: number;
+    }> = [];
+
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - (29 - i));
+      d.setHours(23, 59, 59, 999);
+      const dateKey = d.toISOString().slice(0, 10);
+      const dayLabel = dateKey.slice(8, 10);
+
+      const cumApps = appSubmissions.filter(
+        (a) => a.submittedAt && a.submittedAt <= d,
+      ).length;
+      const cumInterview = new Set(
+        historyRows
+          .filter((r) => r.type === 'INTERVIEW' && r.changedAt <= d)
+          .map((r) => r.applicationId),
+      ).size;
+      const cumOffer = new Set(
+        historyRows
+          .filter((r) => r.type === 'OFFER' && r.changedAt <= d)
+          .map((r) => r.applicationId),
+      ).size;
+      const cumReject = new Set(
+        historyRows
+          .filter((r) => r.type === 'REJECT' && r.changedAt <= d)
+          .map((r) => r.applicationId),
+      ).size;
+      const cumHired = hiredWithDate.filter(
+        (a) => a.hiredAt && a.hiredAt <= d,
+      ).length;
+
+      hiringInsightsTimeSeries.push({
+        date: dayLabel,
+        applicationToInterviewRate:
+          cumApps > 0 ? Math.round((cumInterview / cumApps) * 100) : 0,
+        offerAcceptanceRate:
+          cumOffer > 0 ? Math.round((cumHired / cumOffer) * 100) : 0,
+        rejectionRate:
+          cumApps > 0 ? Math.round((cumReject / cumApps) * 100) : 0,
+      });
+    }
+
     return {
       activeJobs: activeJobIds.length,
       totalApplicants,
@@ -207,6 +400,22 @@ export class DashboardService {
       upcomingInterviews: interviews,
       topJobs,
       performanceLogs,
+      summaryTrends: {
+        totalApplicants: { ...totalApplicantsTrend, current: totalApplicants, previous: lastMonthApps },
+        activeJobs: { ...activeJobsTrend, current: activeJobIds.length, previous: activeJobIds.length },
+        interviewsThisWeek: { ...interviewsTrend, current: thisWeekInterviews, previous: lastWeekInterviews },
+        timeToHire: {
+          value: timeToHireDays,
+          direction: 'same' as const,
+          text: 'Same as last month',
+        },
+      },
+      todoCounts: {
+        jobApprovalPending: jobApprovalCount,
+        interviewFeedbackPending: feedbackPendingCount,
+        offerApprovalPending,
+      },
+      hiringInsightsTimeSeries,
     };
   }
 
@@ -224,6 +433,18 @@ export class DashboardService {
         offersSent: 0,
         candidatesShortlisted: 0,
       },
+      summaryTrends: {
+        totalApplicants: { current: 0, previous: 0, direction: 'same' as const, diff: 0, text: 'Same as last month' },
+        activeJobs: { current: 0, previous: 0, direction: 'same' as const, diff: 0, text: 'Same as last month' },
+        interviewsThisWeek: { current: 0, previous: 0, direction: 'same' as const, diff: 0, text: 'Same as last month' },
+        timeToHire: { value: 0, direction: 'same' as const, text: 'Same as last month' },
+      },
+      todoCounts: {
+        jobApprovalPending: 0,
+        interviewFeedbackPending: 0,
+        offerApprovalPending: 0,
+      },
+      hiringInsightsTimeSeries: [],
     };
   }
 }
