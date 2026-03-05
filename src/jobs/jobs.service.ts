@@ -185,9 +185,7 @@ export class JobsService {
 
     return {
       ...rest,
-      assignedRecruiter: recruiter
-        ? { user: { name: recruiterName } }
-        : null,
+      assignedRecruiter: recruiter ? { user: { name: recruiterName } } : null,
       values,
       benchmark,
     };
@@ -210,38 +208,61 @@ export class JobsService {
       ? (dto.requirements.toUpperCase() as RequirementsLevel)
       : undefined;
 
-    return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
-      tx.job.create({
-        data: {
-          title: dto.title,
-          experience: dto.experience,
-          employmentType: dto.employmentType,
-          workArrangement: dto.workArrangement,
-          responsibilities: dto.responsibilities ?? null,
-          requirements: prismaRequirements ?? null,
-          perks: dto.perks ?? null,
-          education: dto.education ?? null,
-          location: dto.location ?? null,
+    try {
+      return await this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
+        tx.job.create({
+          data: {
+            title: dto.title,
+            experience: dto.experience,
+            employmentType: dto.employmentType,
+            workArrangement: dto.workArrangement,
+            responsibilities: dto.responsibilities ?? null,
+            requirements: prismaRequirements ?? null,
+            perks: dto.perks ?? null,
+            education: dto.education ?? null,
+            location: dto.location ?? null,
 
-          language: prismaLanguage ?? null,
-          introduction: dto.introduction ?? null,
-          salary: dto.salary ?? null,
-          hoursPerWeek: dto.hoursPerWeek ?? null,
-          companySize: dto.companySize ?? null,
-          videoUrl: dto.videoUrl ?? null,
-          applicationClosingDate: dto.applicationClosingDate
-            ? new Date(dto.applicationClosingDate)
-            : null,
-          jobNumber: dto.jobNumber ?? null,
+            language: prismaLanguage ?? null,
+            introduction: dto.introduction ?? null,
+            salary: dto.salary ?? null,
+            hoursPerWeek: dto.hoursPerWeek ?? null,
+            companySize: dto.companySize ?? null,
+            videoUrl: dto.videoUrl ?? null,
+            applicationClosingDate: dto.applicationClosingDate
+              ? new Date(dto.applicationClosingDate)
+              : null,
+            jobNumber: dto.jobNumber ?? null,
 
-          companyId: ctx.companyId,
-          recruiterId,
-          departmentId: dto.departmentId ?? null,
-          status: JobStatus.DRAFT,
-        },
-        select: jobListSelect,
-      }),
-    );
+            companyId: ctx.companyId,
+            recruiterId,
+            departmentId: dto.departmentId ?? null,
+            status: JobStatus.DRAFT,
+
+            // Required array fields in schema (no @default) – provide empty arrays if not in DTO
+            niceToHave: [],
+            whoYouAre: [],
+            tags: [],
+          },
+          select: jobListSelect,
+        }),
+      );
+    } catch (error) {
+      if (this.isJobUniqueConstraintError(error)) {
+        const meta = (error as Prisma.PrismaClientKnownRequestError).meta as
+          | { target?: string[] }
+          | undefined;
+        const isJobNumber =
+          Array.isArray(meta?.target) &&
+          meta.target.includes('companyId') &&
+          meta.target.includes('jobNumber');
+        throw new BadRequestException(
+          isJobNumber
+            ? 'A job with this job number already exists in your organization. Please use a different job number.'
+            : 'A job with these values already exists. Please change the conflicting field(s).',
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -255,11 +276,10 @@ export class JobsService {
       recruiterId: true;
     },
   >(jobId: number, ctx: JobScopeContext, select: S) {
-    const job = await this.prisma.job.findFirst({
+    const job = await this.prisma.job.findUnique({
       where: { id: jobId },
       select,
     });
-
     if (!job) {
       throw new NotFoundException('Job not found');
     }
@@ -297,6 +317,7 @@ export class JobsService {
    * DRAFT -> PENDING_APPROVAL
    */
   async requestApproval(jobId: number, ctx: JobScopeContext) {
+    console.log(jobId, 'jobId');
     const job = await this.loadJobWithAccessCheck(jobId, ctx, {
       ...jobPublishReadSelect,
     });
@@ -420,7 +441,9 @@ export class JobsService {
       return false;
     }
 
-    return (error.meta as { modelName?: string } | undefined)?.modelName === 'Job';
+    return (
+      (error.meta as { modelName?: string } | undefined)?.modelName === 'Job'
+    );
   }
 
   private validateJobForPublishing(
@@ -446,7 +469,11 @@ export class JobsService {
    * - With job:approve permission: DRAFT, PENDING_APPROVAL, or APPROVED -> LIVE
    * - With only job:publish permission: APPROVED -> LIVE
    */
-  async publish(jobId: number, ctx: JobScopeContext, hasApprovePermission: boolean) {
+  async publish(
+    jobId: number,
+    ctx: JobScopeContext,
+    hasApprovePermission: boolean,
+  ) {
     const job = await this.loadJobWithAccessCheck(jobId, ctx, {
       ...jobPublishReadSelect,
     });
@@ -548,8 +575,8 @@ export class JobsService {
       department: departmentId
         ? { connect: { id: departmentId } }
         : departmentId === null
-        ? { disconnect: true }
-        : undefined,
+          ? { disconnect: true }
+          : undefined,
     };
 
     return this.prisma.runWithOrgContext(ctx.companyId, (tx) =>
@@ -594,11 +621,7 @@ export class JobsService {
    * (weights null), another only weights (keywords null). Each update merges into
    * existing data and does not overwrite the other.
    */
-  async saveValues(
-    jobId: number,
-    ctx: JobScopeContext,
-    dto: SaveValuesDto,
-  ) {
+  async saveValues(jobId: number, ctx: JobScopeContext, dto: SaveValuesDto) {
     const job = await this.prisma.job.findFirst({
       where: { id: jobId },
       select: { id: true, companyId: true, recruiterId: true },
@@ -749,13 +772,21 @@ export class JobsService {
       // Replace core values: delete existing, recreate from DTO.
       if (dto.coreValues !== undefined) {
         await tx.jobBenchmarkCoreValue.deleteMany({ where: { benchmarkId } });
-        const coreValueEntries: { benchmarkId: number; coreValueId: number; weight: number }[] = [];
+        const coreValueEntries: {
+          benchmarkId: number;
+          coreValueId: number;
+          weight: number;
+        }[] = [];
         for (const cv of dto.coreValues) {
           const trimmedName = cv.value?.trim();
           if (!trimmedName) continue;
           const coreValue = await tx.coreValue.upsert({
             where: { name: trimmedName },
-            create: { name: trimmedName, category: 'Benchmark', isActive: true },
+            create: {
+              name: trimmedName,
+              category: 'Benchmark',
+              isActive: true,
+            },
             update: { isActive: true },
             select: { id: true },
           });
@@ -775,7 +806,9 @@ export class JobsService {
 
       // Replace team style tags: delete existing, recreate from DTO.
       if (dto.teamStyleTags !== undefined) {
-        await tx.jobBenchmarkTeamStyleTag.deleteMany({ where: { benchmarkId } });
+        await tx.jobBenchmarkTeamStyleTag.deleteMany({
+          where: { benchmarkId },
+        });
         const tags = dto.teamStyleTags.filter((t) => t.trim() !== '');
         if (tags.length > 0) {
           await tx.jobBenchmarkTeamStyleTag.createMany({

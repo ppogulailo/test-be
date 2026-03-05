@@ -6,5 +6,11 @@ ALTER TABLE report_templates FORCE ROW LEVEL SECURITY;
 CREATE POLICY report_templates_org_isolation ON report_templates
   USING ("companyId" = current_setting('app.current_org_id', true)::int);
 
--- Grant full DML to the app role
-GRANT SELECT, INSERT, UPDATE, DELETE ON report_templates TO ferdge_app;
+-- Grant full DML to the app role (only if it exists; skipped on managed DBs like Fly)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ferdge_app') THEN
+    GRANT SELECT, INSERT, UPDATE, DELETE ON report_templates TO ferdge_app;
+  END IF;
+END
+$$;

@@ -7,10 +7,7 @@ import { AppModule } from './app.module';
 
 const config = {
   port: Number(process.env.PORT) || 4000,
-  corsOrigin: [
-    'https://fellor-frond-21ehv9zpx-ferdge-project-2025.vercel.app',
-    'http://localhost:3000',
-  ],
+  corsOrigin: ['https://fellor-frond-end.vercel.app', 'http://localhost:3000'],
 };
 
 async function bootstrap() {
